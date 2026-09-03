@@ -1,0 +1,595 @@
+// BOCE Chat — Database Schema (foundation slice)
+// This models the core of the 60-entity spec: auth, invitations, profiles,
+// privacy, friendships, chats/messages, notifications, and audit logging.
+// Group/community/call/post/story/poll/event tables are noted as TODOs at
+// the bottom — same patterns, added once the foundation is validated.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────
+
+enum PlatformRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  USER
+}
+
+enum AuthProvider {
+  EMAIL
+  PHONE
+  GOOGLE
+  USERNAME
+}
+
+enum Visibility {
+  PUBLIC
+  FRIENDS
+  PRIVATE
+  CUSTOM
+}
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  IGNORED
+  CANCELLED
+}
+
+enum ChatType {
+  DIRECT
+  GROUP
+  SELF // "Saved Messages" personal chat
+}
+
+enum ChatMemberRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum MessageStatus {
+  SENDING
+  SENT
+  DELIVERED
+  SEEN
+  FAILED
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  DOCUMENT
+  VOICE
+  LOCATION
+  LINK
+  SYSTEM
+}
+
+enum InvitationStatus {
+  ACTIVE
+  EXPIRED
+  DISABLED
+  EXHAUSTED
+}
+
+enum ReportStatus {
+  PENDING
+  INVESTIGATING
+  RESOLVED
+  REJECTED
+  ESCALATED
+}
+
+enum ReportTargetType {
+  USER
+  MESSAGE
+  POST
+  STORY
+  GROUP
+  COMMUNITY
+  MEDIA
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUTH & USERS
+// ─────────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String       @id @default(uuid())
+  username      String       @unique
+  fullName      String
+  dateOfBirth   DateTime
+  school        String
+  platformRole  PlatformRole @default(USER)
+
+  passwordHash  String? // null if user only uses OAuth/OTP
+  emailVerified Boolean      @default(false)
+  phoneVerified Boolean      @default(false)
+
+  status        UserStatus   @default(ACTIVE)
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime? // soft delete -> grace period before hard delete
+
+  profile             Profile?
+  privacySettings     PrivacySettings?
+  notificationSettings NotificationSettings?
+  authAccounts        AuthAccount[]
+  sessions            Session[]
+  devices             Device[]
+
+  invitationUsed      InvitationUsage?
+
+  sentFriendRequests     FriendRequest[]      @relation("SentRequests")
+  receivedFriendRequests FriendRequest[]      @relation("ReceivedRequests")
+  friendshipsA           Friendship[]         @relation("UserA")
+  friendshipsB           Friendship[]         @relation("UserB")
+  blockedUsers           BlockedUser[]        @relation("Blocker")
+  blockedBy              BlockedUser[]        @relation("Blocked")
+
+  chatMemberships ChatMember[]
+  messagesSent    Message[]
+  reactions       MessageReaction[]
+
+  notifications   Notification[]
+  reportsFiled    Report[]             @relation("ReportsFiled")
+  auditLogs       AuditLog[]           @relation("AuditActor")
+  activityLogs    ActivityLog[]
+  securityLogs    SecurityLog[]
+
+  invitationsCreated Invitation[]      @relation("InvitationCreator")
+
+  @@index([username])
+  @@index([school])
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  DEACTIVATED
+}
+
+model Profile {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  avatarUrl   String?
+  coverUrl    String?
+  bio         String?
+  location    String?
+  interests   String[] @default([])
+  socialLinks Json?    // [{ platform, url }]
+  customStatus String?
+
+  updatedAt   DateTime @updatedAt
+
+  @@map("profiles")
+}
+
+// Locked-field change requests (username, fullName, dob, school)
+model ProfileChangeRequest {
+  id          String   @id @default(uuid())
+  userId      String
+  field       String   // "username" | "fullName" | "dateOfBirth" | "school"
+  oldValue    String
+  newValue    String
+  reason      String?
+  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewedBy  String?
+  reviewNote  String?
+  createdAt   DateTime @default(now())
+  reviewedAt  DateTime?
+
+  @@index([userId, status])
+  @@map("profile_change_requests")
+}
+
+model AuthAccount {
+  id         String       @id @default(uuid())
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider   AuthProvider
+  identifier String       // email, phone, google sub, or username
+  createdAt  DateTime     @default(now())
+
+  @@unique([provider, identifier])
+  @@index([userId])
+  @@map("authentication_accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId     String?
+  device       Device?  @relation(fields: [deviceId], references: [id])
+  refreshTokenHash String
+  userAgent    String?
+  ipAddress    String?
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+  revokedAt    DateTime?
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Device {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  platform     String    // web | android | ios | desktop
+  pushToken    String?
+  lastActiveAt DateTime  @default(now())
+  loginLocation String?
+  createdAt    DateTime  @default(now())
+
+  sessions     Session[]
+
+  @@index([userId])
+  @@map("devices")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// INVITATIONS
+// ─────────────────────────────────────────────────────────────────────────
+
+model Invitation {
+  id            String           @id @default(uuid())
+  code          String           @unique
+  createdById   String
+  createdBy     User             @relation("InvitationCreator", fields: [createdById], references: [id])
+
+  purpose       String?
+  maxUses       Int              @default(1)
+  useCount      Int              @default(0)
+  status        InvitationStatus @default(ACTIVE)
+  expiresAt     DateTime?
+
+  autoAssignChatId String?       // e.g. auto-join a group/community on redemption
+
+  createdAt     DateTime         @default(now())
+
+  usages        InvitationUsage[]
+
+  @@index([code])
+  @@index([status])
+  @@map("invitations")
+}
+
+model InvitationUsage {
+  id           String     @id @default(uuid())
+  invitationId String
+  invitation   Invitation @relation(fields: [invitationId], references: [id])
+  userId       String     @unique // one invitation redemption per user
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  usedAt       DateTime   @default(now())
+
+  @@map("invitation_usage")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PRIVACY & NOTIFICATION SETTINGS
+// ─────────────────────────────────────────────────────────────────────────
+
+model PrivacySettings {
+  id                String     @id @default(uuid())
+  userId            String     @unique
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  profileVisibility Visibility @default(FRIENDS)
+  dobVisibility     Visibility @default(PRIVATE)
+  schoolVisibility  Visibility @default(FRIENDS)
+  friendsListVisibility Visibility @default(FRIENDS)
+  postsVisibility   Visibility @default(FRIENDS)
+  storiesVisibility Visibility @default(FRIENDS)
+
+  onlineStatusVisibility Visibility @default(FRIENDS)
+  lastSeenVisibility     Visibility @default(FRIENDS)
+  readReceiptsEnabled    Boolean    @default(true)
+  typingIndicatorEnabled Boolean    @default(true)
+
+  friendRequestPermission String   @default("EVERYONE") // EVERYONE | FRIENDS_OF_FRIENDS | NOBODY
+  messagePermission        String  @default("EVERYONE")
+  callPermission            String @default("EVERYONE")
+
+  searchable        Boolean    @default(true)
+
+  updatedAt         DateTime   @updatedAt
+
+  @@map("privacy_settings")
+}
+
+model NotificationSettings {
+  id       String  @id @default(uuid())
+  userId   String  @unique
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messages Boolean @default(true)
+  friendRequests Boolean @default(true)
+  reactions Boolean @default(true)
+  comments  Boolean @default(true)
+  mentions  Boolean @default(true)
+  groupInvites Boolean @default(true)
+  calls     Boolean @default(true)
+  security  Boolean @default(true)
+
+  pushEnabled  Boolean @default(true)
+  emailEnabled Boolean @default(true)
+
+  @@map("notification_settings_table")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// FRIENDSHIP
+// ─────────────────────────────────────────────────────────────────────────
+
+model FriendRequest {
+  id           String              @id @default(uuid())
+  senderId     String
+  sender       User                @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId   String
+  receiver     User                @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+  status       FriendRequestStatus @default(PENDING)
+  createdAt    DateTime            @default(now())
+  respondedAt  DateTime?
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+  @@map("friend_requests")
+}
+
+model Friendship {
+  id        String   @id @default(uuid())
+  userAId   String
+  userA     User     @relation("UserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userBId   String
+  userB     User     @relation("UserB", fields: [userBId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  // Free-form categorisation: "close_friends" | "school" | custom list ids
+  labels    String[] @default([])
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+  @@map("friendships")
+}
+
+model BlockedUser {
+  id         String   @id @default(uuid())
+  blockerId  String
+  blocker    User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId  String
+  blocked    User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@map("blocked_users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CHATS & MESSAGES
+// ─────────────────────────────────────────────────────────────────────────
+
+model Chat {
+  id            String       @id @default(uuid())
+  type          ChatType
+  name          String?      // group chats only
+  imageUrl      String?
+  description   String?
+
+  disappearingSeconds Int?   // 10–60, null = disabled
+
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  members       ChatMember[]
+  messages      Message[]
+  pinnedMessages PinnedMessage[]
+
+  @@map("chats")
+}
+
+model ChatMember {
+  id            String         @id @default(uuid())
+  chatId        String
+  chat          Chat           @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role          ChatMemberRole @default(MEMBER)
+
+  mutedUntil    DateTime?
+  archived      Boolean        @default(false)
+  favorited     Boolean        @default(false)
+  customLabel   String?
+
+  joinedAt      DateTime       @default(now())
+  lastReadAt    DateTime?
+
+  @@unique([chatId, userId])
+  @@index([userId])
+  @@map("chat_members")
+}
+
+model Message {
+  id           String        @id @default(uuid())
+  chatId       String
+  chat         Chat          @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId     String
+  sender       User          @relation(fields: [senderId], references: [id])
+
+  type         MessageType   @default(TEXT)
+  // Encrypted payload for E2E chats; plaintext body only used for
+  // server-rendered system messages. See docs/ENCRYPTION.md.
+  ciphertext   String?
+  body         String?
+
+  replyToId    String?
+  replyTo      Message?      @relation("Replies", fields: [replyToId], references: [id])
+  replies      Message[]     @relation("Replies")
+
+  forwardedFromId String?
+
+  status       MessageStatus @default(SENT)
+  editedAt     DateTime?
+  deletedForEveryoneAt DateTime?
+
+  expiresAt    DateTime?     // disappearing-message timer target
+
+  createdAt    DateTime      @default(now())
+
+  reactions    MessageReaction[]
+  pinnedIn     PinnedMessage[]
+
+  @@index([chatId, createdAt])
+  @@map("messages")
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId, emoji])
+  @@map("message_reactions")
+}
+
+model PinnedMessage {
+  id        String   @id @default(uuid())
+  chatId    String
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  pinnedById String
+  pinnedAt  DateTime @default(now())
+
+  @@unique([chatId, messageId])
+  @@map("pinned_messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // message | friend_request | reaction | mention | ...
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// REPORTS & MODERATION
+// ─────────────────────────────────────────────────────────────────────────
+
+model Report {
+  id           String           @id @default(uuid())
+  reporterId   String
+  reporter     User             @relation("ReportsFiled", fields: [reporterId], references: [id])
+  targetType   ReportTargetType
+  targetId     String
+  category     String
+  details      String?
+  status       ReportStatus     @default(PENDING)
+  assignedToId String?
+  resolutionNote String?
+  createdAt    DateTime         @default(now())
+  resolvedAt   DateTime?
+
+  @@index([status])
+  @@map("reports")
+}
+
+model ModerationAction {
+  id         String   @id @default(uuid())
+  actorId    String
+  targetType String
+  targetId   String
+  action     String   // mute | ban | suspend | remove_content | restrict
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@map("moderation_actions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// LOGS
+// ─────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  actor     User     @relation("AuditActor", fields: [actorId], references: [id])
+  action    String
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("activity_logs")
+}
+
+model SecurityLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     String   // login | login_failed | password_reset | 2fa_enabled | new_device ...
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("security_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// NOT YET MODELED (next slices — same patterns as above):
+//   groups, group_roles · communities, channels, channel_members
+//   posts, post_reactions, comments · stories, story_views
+//   calls, call_participants · polls, poll_options, poll_votes
+//   events, event_participants · media, files, voice_messages, locations
+//   saved_content · support_tickets
+// ─────────────────────────────────────────────────────────────────────────

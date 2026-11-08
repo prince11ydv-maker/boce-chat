@@ -104,3 +104,9 @@ For a genuinely new, empty PostgreSQL project, follow [FREE-HOSTING.md](FREE-HOS
 Create the private attachment bucket and initialize or import the intended workspace only through the documented setup procedure. Imports refuse occupied targets. After the worker route is live and its secret is stored in Supabase Vault, follow [EMAIL-SETUP.md](EMAIL-SETUP.md) for `schema/email-worker-postgres.sql` and `schema/teaching-worker-postgres.sql`. They configure one existing delivery job, not a second scheduler. Never run the initial schema or an import over the current production database.
 
 The files in [AZURE-HOSTING.md](AZURE-HOSTING.md) and `scripts/azure/` are retained legacy hosting material. The live website runs on Vercel and Supabase; the newer teaching and notice workflows are documented and verified for SQLite/PostgreSQL.
+
+## Private Firebase backup on the owner's Desktop
+
+The `Classnest-Website-Source-2026-11-08` Desktop folder has a separate `PRIVATE-Firebase-Admin/` folder beside the publishable `classnest/` project. It holds the owner's original downloaded Firebase admin JSON and a private-use guide. This folder is excluded from Git and both source ZIPs. The mobile source copy points to this single private backup rather than duplicating the credential.
+
+Use the admin JSON only for the server's private `FIREBASE_SERVICE_ACCOUNT_JSON` configuration. It is different from `mobile/android/firebase-client.json`, which contains public client identifiers and belongs in the app source. Never put the admin JSON in the APK, browser files, GitHub, or public source archives. Firebase admin and service-account filenames are ignored by the project as an extra safeguard.

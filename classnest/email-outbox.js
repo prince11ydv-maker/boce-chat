@@ -2,7 +2,7 @@ import {randomBytes,randomUUID,createCipheriv,createDecipheriv,createHash,create
 const hash=value=>createHash('sha256').update(value).digest('hex');
 const kinds=new Set(['password-reset','email-verification','notification','class-notification']);
 const notificationKind=kind=>kind==='notification'||kind==='class-notification';
-const classTypes=new Set(['note','notice','daily-routine','teacher-reminder','class-status']);
+const classTypes=new Set(['note','notice','daily-routine','teacher-reminder','class-reminder','class-status']);
 const failureCode=error=>/^[A-Z_]{3,50}$/.test(error?.code||'')?error.code:'EMAIL_DELIVERY_FAILED';
 export function createEmailOutbox({db,mailer,key=process.env.EMAIL_ENCRYPTION_KEY,now=Date.now,dailyLimit=280,notificationLimit=180}={}){
   const enabled=mailer.enabled;
@@ -58,6 +58,10 @@ export function createEmailOutbox({db,mailer,key=process.env.EMAIL_ENCRYPTION_KE
         }else if(message.type==='daily-routine'){
           const match=/^daily:(\d+):(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(notification.reference||'');
           if(!match||Number(match[1])!==message.semester||!await db.get('SELECT semester FROM daily_routines WHERE semester=? AND class_date=? AND revision=?',message.semester,match[2],Number(match[3])))return null;
+        }else if(message.type==='class-reminder'){
+          if(user.role!=='member')return null;
+          const occurrence=await db.get('SELECT c.active,c.response,c.semester,c.starts_at,u.role teacher_role FROM class_occurrences c JOIN users u ON u.id=c.teacher_id WHERE c.id=?',notification.reference);
+          if(!occurrence||occurrence.teacher_role!=='teacher'||Number(occurrence.active)!==1||occurrence.response==='absent'||occurrence.semester!==message.semester||occurrence.starts_at<=now()||occurrence.starts_at>now()+3*60000)return null;
         }else{
           const split=notification.reference?.lastIndexOf(':');if(!split||split<0)return null;
           const occurrence=await db.get('SELECT active,revision,semester FROM class_occurrences WHERE id=?',notification.reference.slice(0,split));

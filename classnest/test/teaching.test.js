@@ -43,7 +43,7 @@ test('Nepal weekly occurrences remind three minutes before class once, expire at
     assert.equal((await f.service.processDue()).reminded,0);f.clock('2026-11-09T09:06:59+05:45');assert.equal((await f.service.processDue()).reminded,0);
     f.clock('2026-11-09T09:07:00+05:45');const runs=await Promise.all([f.service.processDue(),f.service.processDue()]);assert.equal(runs.reduce((sum,r)=>sum+r.reminded,0),1);
     assert.equal(f.calls.filter(n=>n.type==='teacher-reminder').length,1);const inbox=await f.service.notifications({id:'t'});assert.equal(inbox.unread,1);assert.equal(inbox.items[0].url,'#teaching');assert.equal(inbox.items[0].reference,session.id);
-    assert.equal((await f.service.notifications({id:'m3'})).items.length,0);
+    const studentInbox=await f.service.notifications({id:'m3'});assert.equal(studentInbox.items.length,1);assert.equal(studentInbox.items[0].type,'class-reminder');assert.equal((await f.service.notifications({id:'m4'})).items.length,0);
     f.clock('2026-11-09T09:10:00+05:45');assert.equal((await f.service.processDue()).reminded,0);assert.equal((await f.service.notifications({id:'t'})).items.length,0);
   }finally{await f.close();}
 });
@@ -60,6 +60,29 @@ test('daily publication overrides weekly classes and notifies only approved acco
     await f.service.publishDaily({id:'a'},daily({revision:1,rows:[]}));const empty=await f.service.state(null,3);assert.equal(empty.source,'daily');assert.equal(empty.sessions.length,0);assert.equal(empty.dailyRoutine.revision,2);
     await f.service.processDue();assert.equal((await f.service.state(null,3)).sessions.length,0);assert.equal(f.calls.filter(n=>n.type==='daily-routine'&&n.userId==='m3').length,2);
   }finally{await f.close();}
+});
+
+test('student class reminders deduplicate, honor current semester, and skip cancelled classes',async()=>{
+  const f=await fixture();try{
+    await f.service.saveSlot({id:'a'},slot());
+    f.clock('2026-11-09T09:07:00+05:45');
+    const [first,second]=await Promise.all([f.service.processDue(),f.service.processDue()]);
+    assert.equal(first.studentReminded+second.studentReminded,1);
+    assert.equal(f.calls.filter(n=>n.type==='class-reminder'&&n.userId==='m3').length,1);
+    assert.equal(f.calls.some(n=>n.type==='class-reminder'&&['m4','p','a','t'].includes(n.userId)),false);
+    await f.db.run("UPDATE users SET semester=4 WHERE id='m3'");
+    assert.equal((await f.service.notifications({id:'m3'})).items.length,0);
+    f.clock('2026-11-09T09:10:00+05:45');
+    assert.equal((await f.service.processDue()).studentReminded,0);
+  }finally{await f.close();}
+  const cancelled=await fixture();try{
+    await cancelled.service.saveSlot({id:'a'},slot());
+    const occurrence=(await cancelled.service.state(null,3)).sessions[0];
+    await cancelled.service.respond({id:'t'},occurrence.id,{response:'absent',reason:'Unavailable',eta:'',revision:occurrence.revision});
+    cancelled.clock('2026-11-09T09:07:00+05:45');
+    assert.equal((await cancelled.service.processDue()).studentReminded,0);
+    assert.equal(cancelled.calls.some(n=>n.type==='class-reminder'),false);
+  }finally{await cancelled.close();}
 });
 
 test('teacher attendance validates owner, ETA or absence reason, stale revision, revocation and response window',async()=>{
@@ -126,6 +149,17 @@ test('bounded reminder batches progress past already notified classes without du
     }
     f.clock('2026-11-09T09:07:00+05:45');assert.equal((await f.service.processDue()).reminded,200);assert.equal((await f.service.processDue()).reminded,1);assert.equal((await f.service.processDue()).reminded,0);
     const delivered=f.calls.filter(n=>n.type==='teacher-reminder');assert.equal(delivered.length,201);assert.equal(new Set(delivered.map(n=>n.userId)).size,201);
+  }finally{await f.close();}
+});
+
+test('student reminder batches cap account/class pairs and later ticks progress; cancelled reminders disappear from inboxes',async()=>{
+  const f=await fixture();try{
+    for(let i=0;i<200;i++)await f.db.run('INSERT INTO users(id,name,email,password,role,created,semester) VALUES(?,?,?,?,?,?,?)','batch-student-'+i,'Student '+i,'batch-student-'+i+'@example.test','unused','member',new Date(f.at).toISOString(),3);
+    await f.service.saveSlot({id:'a'},slot());f.clock('2026-11-09T09:07:00+05:45');
+    assert.equal((await f.service.processDue()).studentReminded,200);assert.equal((await f.service.processDue()).studentReminded,1);assert.equal((await f.service.processDue()).studentReminded,0);
+    const sent=f.calls.filter(row=>row.type==='class-reminder');assert.equal(sent.length,201);assert.equal(new Set(sent.map(row=>row.userId+'|'+row.reference)).size,201);assert.equal((await f.service.notifications({id:'m3'})).items.filter(row=>row.type==='class-reminder').length,1);
+    const occurrence=(await f.service.workspace({id:'t'},3)).upcoming[0];await f.service.respond({id:'t'},occurrence.id,{response:'absent',reason:'Cancelled class',eta:'',revision:occurrence.revision});
+    assert.equal((await f.service.notifications({id:'m3'})).items.some(row=>row.type==='class-reminder'),false);assert.equal((await f.service.notifications({id:'t'})).items.some(row=>row.type==='teacher-reminder'),false);
   }finally{await f.close();}
 });
 

@@ -44,6 +44,17 @@ public final class UrlPolicy {
             && DOWNLOAD.matcher(uri.getRawPath()).matches();
     }
 
+    /** Notification taps only open the account inbox, never arbitrary web/API URLs. */
+    public static String notificationDestination(String value) {
+        if (value == null) return null;
+        String absolute = value.startsWith("/?") ? ORIGIN + value : value;
+        URI uri = parse(absolute);
+        if (!isFirstParty(absolute) || !"/".equals(uri.getRawPath()) || !"notifications".equals(uri.getRawFragment())) return null;
+        String query = uri.getRawQuery();
+        if (query == null || !query.matches("semester=(?:[1-9]|[12][0-9]|30)")) return null;
+        return ORIGIN + "/?" + query + "#notifications";
+    }
+
     public static boolean isSignedStorageDownload(String value) {
         URI uri = parse(value);
         if (!https(uri) || !STORAGE_HOST.equals(uri.getHost().toLowerCase(Locale.ROOT))

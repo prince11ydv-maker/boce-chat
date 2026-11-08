@@ -1,68 +1,64 @@
 # Classnest on Android and iPhone
 
-Website: **https://pusoe.vercel.app**. The signed Android APK is built and verified, and the home-screen app and student semester-lock website update are READY in production. Deployment and verification evidence is recorded in [DEPLOYMENT.md](DEPLOYMENT.md).
+Website: **https://pusoe.vercel.app**. The Android client, free home-screen app, and website share the same accounts and semester permissions. Current deployment evidence is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Install the free home-screen app
 
-The website provides **Install Classnest** in its navigation and footer. It uses the same website, accounts, database, notes, notices, and timetable.
+- **Android:** open Classnest in Chrome, choose **Install Classnest**, and confirm. The browser menu's **Install app** or **Add to Home screen** is a fallback.
+- **iPhone or iPad:** open Classnest in Safari, tap **Share → Add to Home Screen**, keep **Open as Web App** enabled if shown, and tap **Add**.
 
-- **Android:** open Classnest in Chrome, choose **Install Classnest**, then confirm the browser's installation prompt. If no prompt is available, use the browser menu's **Install app** or **Add to Home screen** option.
-- **iPhone or iPad:** open Classnest in Safari, tap **Share → Add to Home Screen**, keep **Open as Web App** enabled if shown, then tap **Add**.
-
-Open the new Classnest icon and sign in with the existing account. Installed apps and ordinary browser tabs can keep separate browser storage or sessions, so the installed app may ask for sign-in again. These installations do not require an App Store or Google Play developer account.
+Open the new icon and sign in. Installed apps and ordinary browser tabs can keep separate sessions. No App Store or Google Play developer account is required for this installation.
 
 ## Android APK
 
-The separate Android client is built from [mobile/android](mobile/android/README.md). It supports Android 8.0 and newer (API 26+), with application ID `app.classnest.pusoe`, version `1.0.0`, and version code `1`.
+Download [Classnest 1.1.0](mobile/releases/Classnest-1.1.0.apk), or use the [public GitHub download](https://github.com/prince11ydv-maker/boce-chat/raw/refs/heads/main/classnest/mobile/releases/Classnest-1.1.0.apk). Verify it against [its SHA-256 checksum](mobile/releases/Classnest-1.1.0.apk.sha256). Android may ask you to allow installation from your browser or file manager.
 
-Download [Classnest-1.0.0.apk](mobile/releases/Classnest-1.0.0.apk), or use the [public GitHub download](https://github.com/prince11ydv-maker/boce-chat/raw/refs/heads/main/classnest/mobile/releases/Classnest-1.0.0.apk). The APK was published in commit `a8d62fc`. The file is **28,064 bytes**, with SHA-256 `8f288012aa5539b4eef45e0ee1d37e0b88f379f3ca0fd9c6dc6299a31b44596e`. Android handles installation of a downloaded APK and may ask the owner to allow installation from the chosen browser or file manager.
+The client supports **Android 8.0 and newer**, application ID `app.classnest.pusoe`, version `1.1.0`, version code `2`. It opens the canonical HTTPS Classnest website in a restricted WebView, with native file selection, authenticated attachment downloads, Back navigation, connection/retry screens, and an app menu. Version 1.1.0 adds opt-in phone alerts through Firebase Cloud Messaging (FCM).
 
-The client opens the trusted HTTPS Classnest website inside an Android WebView. The existing backend continues to enforce sign-in, permissions, and semester membership. It includes native file selection, document downloads, Back navigation, loading/error screens, and an app menu for reload, sharing the public website, or opening it in a browser. Website changes appear without rebuilding the APK; changes to native code require a new signed APK with a higher version code.
+Install 1.1.0 over 1.0.0 using the same signing certificate to retain app data. The old [1.0.0 APK](mobile/releases/Classnest-1.0.0.apk) remains available but has no native phone alerts. Website updates appear when the latest page loads; native changes require a new APK with a higher version code. Automatic APK updates and store publication are not included. An APK cannot be installed on an iPhone.
 
-The APK is for Android. iPhone users use the home-screen app above. No Apple App Store or Google Play publication is included in this release.
+## Semester access
 
-### Files and downloads
+Class content requires sign-in. Guests see a welcome screen without class notes, notices, conversations, timetables, or files. Students see only the semester assigned by the administrator, including when a link requests another semester. The server checks current membership for class content, note/notice files, and posting actions. The semester selector cannot change a student's membership.
 
-File uploads use Android's document picker without requesting broad device-storage access. Notes and notices keep their existing file validation and size limits.
+Approved teachers can choose multiple teaching semesters. Their scope combines those choices with active class assignments, and their dashboard shows their own classes and materials. Pending teacher requests do not gain approved teacher posting access. Administrators manage all semesters and student assignments. These rules apply to the website, home-screen app, and APK.
 
-For a native attachment download, the app authorizes the exact first-party download URL using its current session, handles redirects manually, and validates the project's HTTPS signed storage URL. Session cookies are never forwarded to Supabase or Android's DownloadManager. Signed URLs expire quickly; if a queued download waits too long and fails, open Classnest and choose **Download** again to authorize a fresh URL.
+Approved teachers can post semester announcements with supported photos or PDFs. They can edit or delete their own announcements within their current teaching scope; administrators can manage every announcement. Initial publication creates semester-scoped account alerts and opted-in emails. Ordinary edits do not send another announcement.
 
-Android 10 and newer saves downloaded files to public Downloads. Android 8 and 9 uses app-specific Downloads to avoid broad storage permission. Some browser-only exports, including the administrator database backup and generated calendar files, should be opened through the app menu's **Open in browser** option; the browser may require its own sign-in.
+## Turn on phone alerts
 
-## Student semester membership
+**Android APK:** sign in to an approved account, open the native app menu (⋮), choose **Enable phone alerts**, and continue. Android 13+ requests notification permission. Older versions use the app's notification settings. Turn alerts off from the same menu. The app reconnects its registration to the current login while open; signing out removes the server's session-bound registration.
 
-Signed-in student accounts are restricted to the semester assigned by the administrator. Their semester selector is disabled and contains only that semester. Changing a URL, query, or ordinary API request does not switch the account's semester. Cross-semester state, timetables, note/notice files, and note posting/editing/deletion are checked on the server using the current stored account and membership.
+**Home-screen app or supported browser:** open **Notifications**, enable phone alerts, and approve the browser request. On iPhone/iPad, use the installed home-screen app on iOS/iPadOS **16.4 or newer**; an ordinary Safari tab cannot enable these alerts. Each installation or browser needs its own permission.
 
-Approved teachers and administrators retain their existing semester controls. A requested teacher account does not gain teacher access until approved. Only an administrator changes a student's assigned semester.
+Alerts cover new notes, teacher/admin announcements, daily routine updates, and existing class-status/reminder events according to current semester membership and class assignments. Teacher reminders are generated three minutes before their assigned class. Alert text is generic; open the authenticated app for details. Email preferences remain separate and require verified, opted-in email.
 
-This is an account-scope restriction, not a new privacy wall around public notes. Anonymous public reading remains available under the website's existing policy. Signing out does not make public content private.
+Native Android alerts require Google Play services and configured Firebase server credentials. Web alerts require configured Web Push credentials and a supported browser. Permission and internet access are required. Focus modes, battery restrictions, manufacturer settings, force-stopping the app, and provider delays can prevent or delay an alert. This is not an exact alarm or guaranteed delivery at a particular second.
 
-## Connectivity and notifications
+The APK contains public Firebase Android client configuration. Backend authorization uses a separate private server credential, now configured in Vercel. Google OAuth and a delivery-free FCM authorization check passed. Building the APK does not prove real phone delivery; complete a device test after server setup.
 
-An internet connection is needed for notes, notices, messages, timetables, account actions, uploads, and downloads. The home-screen app's service worker stores only a fixed public connection screen, its stylesheet, and app icons. It does not store API responses, account state, chats, notes, notice attachments, signed download URLs, or private backups in Cache Storage.
+## Files, connectivity, and privacy
 
-The existing in-app notifications and verified, opted-in email delivery remain available. Account notifications refresh while the app is open; this release does not add operating-system push notifications or promise background polling when the phone suspends the app. Website updates use the browser's normal service-worker lifecycle rather than forcing a reload during a form or upload.
+Uploads use Android's document picker without broad storage permission. Backend file validation and size limits still apply. Native downloads authorize the exact first-party attachment URL with the current session, then validate the project's signed storage URL. Cookies and Authorization headers never reach Supabase or DownloadManager. Signed URLs expire quickly; retry **Download** if a queued transfer starts too late.
+
+Android 10+ saves to public Downloads. Android 8/9 uses app-specific Downloads; copy important files before uninstalling. Browser-generated exports such as calendar files and administrator backups use **Open in browser** and may need a separate sign-in.
+
+Class content and account actions need internet. The service worker caches only its public offline screen, stylesheet, and four icons. It does not cache APIs, accounts, notes, chats, notice files, signed URLs, or backups. Push handling does not add offline class content. Normal service-worker updates preserve open forms and uploads.
 
 ## Build and signing
 
-The Android project pins Android Gradle Plugin `8.9.2`, Gradle `8.11.1`, compile/target SDK `35`, and Build Tools `35.0.0`. Use JDK 17 or a compatible newer JDK. The Android SDK license was accepted by the owner for the build tools used in this task.
+See [the Android build guide](mobile/android/README.md). The project pins Android Gradle Plugin `8.9.2`, Gradle `8.11.1`, compile/target SDK `35`, and Firebase Messaging `26.0.1`. It uses JDK 17 and the SDK license already accepted by the owner. Firebase includes AndroidX dependencies; no Analytics library is added.
 
-See [the Android build guide](mobile/android/README.md) for the build commands and the `CLASSNEST_KEYSTORE`, `CLASSNEST_KEYSTORE_PASSWORD`, `CLASSNEST_KEY_ALIAS`, and `CLASSNEST_KEY_PASSWORD` environment variables. Signing values and the private release keystore stay outside the source repository and public archives. This build's private key is under `%USERPROFILE%/.classnest/android-signing/`; its password is protected using Windows user-bound DPAPI encryption. Future APK updates must retain the same signing key; keep a private backup of it.
+The private release key stays under `%USERPROFILE%/.classnest/android-signing/`, outside GitHub, Desktop copies, and public archives. Its password uses Windows user-bound DPAPI encryption. Keep a private backup: future updates must use the same certificate. Certificate SHA-256: `0adf108926cd4c45118e389a4069c950cbc6f2579ea40b7401c8e35451dcaf7d`.
 
-The distributable is a signed, non-debuggable release APK. `assembleRelease` and `lintRelease` succeeded. Lint returned zero errors and two reviewed warnings: the guarded Back callback attribute is ignored below API 33, and JavaScript is required for this strictly restricted first-party WebView. The URL-policy harness passed all 57 checks. `apksigner` verified the v2 signature, and the 16 KiB alignment check passed. The signing certificate's SHA-256 fingerprint is `0adf108926cd4c45118e389a4069c950cbc6f2579ea40b7401c8e35451dcaf7d`. The package requests only Internet permission. A signed APK does not establish an approved store release.
+Compilation, release lint, 72 pure-Java URL-policy checks, signature verification, and alignment results are recorded with the [release artifact](mobile/releases/README.md). Notification links accept only a canonical inbox destination with a valid semester. The app has no JavaScript bridge or TLS-error bypass. Notification permission is opt-in; no camera, microphone, or broad storage permission is requested.
 
-## Verification boundary
+## Verification boundary and source
 
-All 108 website tests passed with zero failures. They cover service-worker cache boundaries, installation behavior, backend semester authorization, and frontend scope changes alongside the existing classroom workflows. Local browser checks verified installation guidance and layouts at 320, 390, and 430 pixels; the small-screen toolbar overflow was corrected. A signed-in Semester 3 student opened a Semester 4 URL and remained in Semester 3, with one disabled semester option and a normalized URL. Android build, lint, signing, and alignment checks passed as recorded above.
+Backend/browser tests cover semester isolation, teacher ownership, announcement recipients, and account transitions. Website test and production results are in [DEPLOYMENT.md](DEPLOYMENT.md). Compilation and static checks do not establish physical-phone installation or delivery.
 
-Production deployment `dpl_9ohMbPv9WxytCDTHMTv2zNNtL1Pe` is READY. The homepage, state, mobile assets, and public APK returned 200; served source and APK byte hashes matched the tested files. Existing public class content, three accounts, one approved teacher, and one routine were preserved, and the automatic worker returned 200 after deployment. Authenticated student operations were tested locally; no production student account or class post was created or modified for verification.
+Before broad rollout, test Android/iPhone installation, login, semester restrictions, uploads/downloads, and real notifications with the app closed. Also test permission denial, opt-out, logout/account switching, and a teacher reminder. No physical phone installation or push delivery has been verified in this workspace.
 
-The live installation guide opened from the anonymous Subject library. Its Android/iPhone instructions expanded correctly, and **Download Android APK** linked to the exact public GitHub artifact. This verifies the live guide and link, not installation on a physical phone.
+Hosting remains on the existing Vercel/Supabase services; see [HOSTING.md](HOSTING.md). The repository/source ZIP use the explicit allowlist in `scripts/package.ps1`, including mobile source, public Firebase client configuration, release APKs, and checksums. Private signing keys, server credentials, cloud data, SDKs, dependencies, and build directories are excluded. Source changes do not automatically deploy the website.
 
-No physical Android phone or iPhone installation has been verified in this workspace. Device-specific file pickers, downloaded-file opening, and standalone sign-in should be checked on the intended phones before a broad class rollout.
-
-## Hosting and source
-
-Hosting configuration stays in [HOSTING.md](HOSTING.md). The website continues to use its existing Vercel, Supabase, and email services. Mobile source is under the Classnest folder in the existing `boce-chat` repository; adding it does not connect Vercel to Git or enable automatic deployment. The complete backup ZIP and repository inventory contain 130 files: 127 source files and three public Android release artifacts, including the APK. Private signing material, cloud content, SDKs, dependency/build directories, and environment files are excluded.
-
-References: [web app installation](https://web.dev/learn/pwa/installation/), [Apple home-screen instructions](https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios), [Android WebView](https://developer.android.com/develop/ui/views/layout/webapps/webview), [Android signing](https://developer.android.com/studio/publish/app-signing), and [SDK terms](https://developer.android.com/studio/terms).
+References: [web installation](https://web.dev/learn/pwa/installation/), [Apple home-screen installation](https://support.apple.com/guide/iphone/open-as-web-app-iphea86e5236/ios), [Apple Web Push](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers), [Firebase Android setup](https://firebase.google.com/docs/cloud-messaging/android/get-started), [Firebase message handling](https://firebase.google.com/docs/cloud-messaging/android/receive-messages), [Android signing](https://developer.android.com/studio/publish/app-signing).

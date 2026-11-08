@@ -155,7 +155,12 @@ export function createTeachingService({db,now=Date.now,onNotify=async()=>{}}={})
     return publicOccurrence({...row,response:payload.response,eta,reason,revision:row.revision+1,updated:at});
   });}
   async function notifications(user){return db.transaction(async()=>{
-    const account=await actor(user),at=clock(),scope=await readableSemesters(account,at);const rows=(await db.all('SELECT * FROM app_notifications WHERE user_id=? AND expires_at>? ORDER BY created DESC,id DESC LIMIT 100',account.id,at)).filter(row=>!scope||scope.has(row.semester));
+    const account=await actor(user),at=clock(),scope=await readableSemesters(account,at),rows=[];
+    for(const row of await db.all('SELECT * FROM app_notifications WHERE user_id=? AND expires_at>? ORDER BY created DESC,id DESC LIMIT 100',account.id,at)){
+      if(scope&&!scope.has(row.semester))continue;
+      if(['teacher-reminder','class-reminder'].includes(row.type)&&!await notificationForDelivery(account.id,row.id))continue;
+      rows.push(row);
+    }
     return {items:rows.map(row=>({id:row.id,type:row.type,semester:row.semester,title:row.title,body:row.body,url:row.url,reference:row.reference,created:row.created,read:row.read_at!==null})),unread:rows.filter(row=>row.read_at===null).length};
   });}
   async function markRead(user,id){return db.transaction(async()=>{
@@ -178,6 +183,33 @@ export function createTeachingService({db,now=Date.now,onNotify=async()=>{}}={})
     await prune(clock());
     return {notified:await announce({type:'notice',semester,title,body,url:'#notices/'+encodeURIComponent(id),reference:id,expiresAt:clock()+14*DAY},{exclude:notice.authorId})};
   });}
+  // A background delivery must use current membership and current source data,
+  // not the account role or timetable snapshot saved when it was enqueued.
+  async function notificationForDelivery(userId,id){return db.transaction(async()=>{
+    const at=clock(),account=await db.get('SELECT id,name,role,semester FROM users WHERE id=?',userId);
+    if(!account||!approved.has(account.role))return null;
+    const row=await db.get('SELECT * FROM app_notifications WHERE id=? AND user_id=? AND expires_at>?',id,userId,at);
+    if(!row)return null;
+    const scope=await readableSemesters(account,at);if(scope&&!scope.has(row.semester))return null;
+    if(row.type==='note'){
+      if(!await db.get('SELECT n.id FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.id=? AND s.semester=?',row.reference,row.semester))return null;
+    }else if(row.type==='notice'){
+      if(!await db.get('SELECT id FROM notices WHERE id=? AND semester=?',row.reference,row.semester))return null;
+    }else if(row.type==='daily-routine'){
+      const match=/^daily:(\d+):(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(row.reference||'');
+      if(!match||Number(match[1])!==row.semester||!await db.get('SELECT semester FROM daily_routines WHERE semester=? AND class_date=? AND revision=?',row.semester,match[2],Number(match[3])))return null;
+    }else if(row.type==='teacher-reminder'||row.type==='class-reminder'){
+      const occurrence=await db.get('SELECT * FROM class_occurrences WHERE id=?',row.reference);
+      if(!occurrence||occurrence.semester!==row.semester||Number(occurrence.active)!==1||occurrence.starts_at<=at||occurrence.starts_at>at+REMINDER||!await db.get("SELECT id FROM users WHERE id=? AND role='teacher'",occurrence.teacher_id))return null;
+      if(row.type==='teacher-reminder'&&(account.role!=='teacher'||occurrence.teacher_id!==account.id||occurrence.response!=='pending'))return null;
+      if(row.type==='class-reminder'&&(account.role!=='member'||account.semester!==row.semester||occurrence.response==='absent'))return null;
+    }else if(row.type==='class-status'){
+      const split=row.reference?.lastIndexOf(':');if(!split||split<0)return null;
+      const occurrence=await db.get("SELECT c.active,c.revision,c.semester FROM class_occurrences c JOIN users u ON u.id=c.teacher_id WHERE c.id=? AND u.role='teacher'",row.reference.slice(0,split));
+      if(!occurrence||Number(occurrence.active)!==1||occurrence.semester!==row.semester||occurrence.revision!==Number(row.reference.slice(split+1)))return null;
+    }else return null;
+    return row;
+  });}
   async function processDue(){return db.transaction(async()=>{
     const at=clock();await prune(at);const dates=[dayAt(at),dayAt(at+DAY),dayAt(at+2*DAY)];
     // Batch reads avoid a database round trip for every existing weekly class
@@ -188,7 +220,17 @@ export function createTeachingService({db,now=Date.now,onNotify=async()=>{}}={})
     for(const date of dates)for(const slot of slots){if(slot.weekday!==weekday(date)||overrides.has(slot.semester+':'+date)||startOf(date)+slot.start_minute*60000>at+48*3600000)continue;const key=occurrenceKey({sourceType:'weekly',sourceId:slot.id,sourceRevision:slot.revision,date});if(existing.has(key))continue;await insertOccurrence({sourceType:'weekly',sourceId:slot.id,sourceRevision:slot.revision,semester:slot.semester,date,row:{teacherId:slot.teacher_id,subjectId:slot.subject_id,startMinute:slot.start_minute,endMinute:slot.end_minute,room:slot.room}},at,{knownNew:true});existing.add(key);}
     const due=await db.all(occurrenceSelect+" WHERE c.active=1 AND c.response='pending' AND c.starts_at>? AND c.starts_at<=? AND u.role='teacher' AND NOT EXISTS(SELECT 1 FROM app_notifications n WHERE n.user_id=c.teacher_id AND n.type='teacher-reminder' AND n.reference=c.id) ORDER BY c.starts_at,c.id LIMIT 200",at,at+REMINDER);let reminded=0;
     for(const row of due)reminded+=Number(await notification(row.teacher_id,{type:'teacher-reminder',semester:row.semester,title:'Your class starts soon',body:row.subject_name+' · '+row.class_date+' '+minuteText(row.start_minute)+(row.room?' · '+row.room:'')+'. Open your teacher panel and confirm whether you are coming.',url:'#teaching',reference:row.id,expiresAt:row.starts_at}));
-    return {reminded,checked:due.length};
+    // Student reminders use their current membership, never a browser selector.
+    // They remain independent of the teacher's response prompt and deduplicate
+    // per occurrence/account across repeated or concurrent worker ticks.
+    // Bound account/occurrence pairs, rather than 200 classes multiplied by
+    // 2,000 students. The anti-join lets later ticks progress past sent pairs.
+    const studentDue=await db.all("SELECT c.*,u.name teacher_name,s.name subject_name,m.id reminder_user_id FROM class_occurrences c JOIN users u ON u.id=c.teacher_id JOIN subjects s ON s.id=c.subject_id JOIN users m ON m.semester=c.semester AND m.role='member' WHERE c.active=1 AND c.response<>'absent' AND c.starts_at>? AND c.starts_at<=? AND u.role='teacher' AND NOT EXISTS(SELECT 1 FROM app_notifications n WHERE n.user_id=m.id AND n.type='class-reminder' AND n.reference=c.id) ORDER BY c.starts_at,c.id,m.id LIMIT 200",at,at+REMINDER);
+    let studentReminded=0;
+    for(const row of studentDue){
+      studentReminded+=Number(await notification(row.reminder_user_id,{type:'class-reminder',semester:row.semester,title:'Your class starts soon',body:row.subject_name+' · '+row.class_date+' '+minuteText(row.start_minute)+(row.room?' · '+row.room:'')+'. Open your daily timetable for the latest class update.',url:'#home',reference:row.id,expiresAt:row.starts_at}));
+    }
+    return {reminded,studentReminded,checked:due.length};
   });}
-  return Object.freeze({state,workspace,saveSlot,deleteSlot,publishDaily,respond,notifications,markRead,notifyNote,notifyNotice,processDue});
+  return Object.freeze({state,workspace,saveSlot,deleteSlot,publishDaily,respond,notifications,markRead,notifyNote,notifyNotice,notificationForDelivery,processDue});
 }

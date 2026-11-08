@@ -58,6 +58,11 @@ public final class UrlPolicyTest {
         yes(UrlPolicy.safeFilename("x".repeat(300) + ".pdf").length() == 160, "filename length bounded");
         yes(UrlPolicy.safeFilename("x".repeat(300) + ".pdf").endsWith(".pdf"), "bounded name retains extension");
         no(UrlPolicy.safeFilename("notes\u202efile.pdf").contains("\u202e"), "bidirectional filename control removed");
+        equal(UrlPolicy.ORIGIN + "/?semester=3#notifications", UrlPolicy.notificationDestination("/?semester=3#notifications"), "relative push inbox link");
+        equal(UrlPolicy.ORIGIN + "/?semester=30#notifications", UrlPolicy.notificationDestination(UrlPolicy.ORIGIN + "/?semester=30#notifications"), "canonical push inbox link");
+        for (String value : new String[]{null, "javascript:alert(1)", "//evil.test/?semester=3#notifications", "https://evil.test/?semester=3#notifications", "http://pusoe.vercel.app/?semester=3#notifications", "https://person@pusoe.vercel.app/?semester=3#notifications", "/?semester=0#notifications", "/?semester=31#notifications", "/?semester=3&redirect=https://evil.test/#notifications", "/?semester=3#admin", "/api/users?semester=3#notifications", "/?semester=%33#notifications", "/?semester=3#notifications\n"}) {
+            equal(null, UrlPolicy.notificationDestination(value), "unsafe push destination rejected");
+        }
         System.out.println("Classnest Android URL policy: " + checks + " checks passed.");
     }
 

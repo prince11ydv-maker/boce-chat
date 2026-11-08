@@ -2,9 +2,25 @@
 
 Public website: **https://pusoe.vercel.app**. The previous address, https://classnest-pu.vercel.app, redirects to it with paths, queries, and email-link fragments preserved.
 
-The mobile and student semester-lock update is READY in production, with a built and verified signed Android APK. Local automated/browser checks and production source/content checks passed. Earlier releases remain documented as historical evidence.
+The current release adds semester privacy, a responsive mobile header, teacher announcements, student class reminders and opt-in phone notification delivery. Release facts below distinguish automated checks, cloud configuration and physical-device verification.
 
-## Mobile apps and student semester lock · 8 November 2026
+## Semester privacy, mobile header and phone alerts · 8 November 2026
+
+Production deployment: `dpl_4khExEGH8KKJcgZaXNpgnrj84gUw`; source SHA-256 `fbcee2715844d9fa3b6d90f8b5cfe158a6315c2ec82500d148106847c6fef754` across 59 deployment files. The website, Android/iPhone home-screen app and Android client share server permissions. Signed-out visitors receive only branding and signup metadata. Pending/blocked accounts also receive empty class data; files and timetables require a fresh approved account. Students see only their current administrator-assigned semester. Approved teachers browse their chosen teaching semesters plus active assignments; dashboard notes/counts follow that scope. Private class ownership and discussion permissions remain separately enforced.
+
+The mobile header uses content-driven rows, safe-area spacing and touch controls. Local browser checks covered signed-in teacher controls at 320, 360, 390 and 430 pixels without page overflow or content overlap. Teacher/student flows were checked at 390 pixels. A student requesting Semester 4 stayed in Semester 3 with one disabled semester option; signing out produced the empty gateway.
+
+Approved teachers can post announcements with existing PDF/photo attachment support to a teaching semester and edit/delete their own posts. Existing in-app and opted-in email delivery alerts the selected semester's students. A local teacher publication created the student's account alert; opening it reached the exact notice within Semester 3. Production verification creates no QA account, note or notice and sends no QA broadcast.
+
+The worker targets teacher and student reminders three minutes before active scheduled classes. Student reminder work is bounded to 200 new account/class pairs per tick; cancelled classes, stale memberships and duplicate reminders are suppressed. Student reminder email follows Events consent and verification. In-app alerts refresh while open; phone alerts require explicit device permission and registration.
+
+Web Push uses private VAPID configuration. The new `push_devices` and `push_queue` tables have RLS enabled, no browser/PUBLIC access, and only restricted-server CRUD. The Supabase security advisor returned no findings after migration. Device credentials are encrypted, tied to one login session and omitted from portable exports. Logout/expiry removes their binding. Queue delivery rechecks current account, semester and source before transport. Lock-screen payloads contain an opaque notification ID and generic text; private details load after authentication.
+
+Android 1.1.0 (code 2) is signed with the existing release certificate and contains the public Firebase client configuration for `classnest-pu-soe` on Spark. The APK is 2,852,307 bytes, SHA-256 `593084df3d5840d2df02308cb2c81e7e76139f83ce2a1bd45875f35e9897536d`. Compilation, release lint (zero errors, four reviewed warnings), 16 KiB alignment, v2 signature and 72 URL-policy checks passed. Firebase server-credential connection: configured in the private production environment; Google OAuth and a delivery-free FCM validation request passed. No physical Android/iPhone installation or lock-screen receipt is claimed. Delivery may be delayed by provider, network, battery and operating-system restrictions.
+
+All 131 website tests passed. Cloud/source verification: The homepage and bootstrap state returned 200; guest class collections were empty, timetable/file reads required sign-in, all nine checked frontend byte hashes matched source, and the former domain retained its 308 redirect. Existing account/content counts and subject/routine fingerprints were unchanged. The authenticated minute worker returned 200 with no error and no reminder or push due.. The 143-file source inventory retains both Android release artifacts and excludes credentials, dependencies, SDKs, build folders and user data.
+
+## Historical: mobile apps and student semester lock · 8 November 2026
 
 This release adds a free home-screen app for Android and iPhone, a separately signed Android APK, and an account semester lock shared by website and Android client. Production deployment `dpl_9ohMbPv9WxytCDTHMTv2zNNtL1Pe` is READY, with hostname `classnest-9nk552bqr-prince11ydv-4175.vercel.app` and canonical website https://pusoe.vercel.app. The source SHA-256 is `f79380302ac75c22888aba88f92692aaa4055a3cf6a25a83b6da889466fa2c4e` across 54 website deployment files. No schema migration, account re-import, new hosting service, or paid store account was required.
 

@@ -13,6 +13,7 @@ import {createTeachingService} from './teaching.js';
 import {createTeacherDashboard} from './teacher-dashboard.js';
 import {createNoticeAttachments,noticeAttachmentTypes,publicNoticeAttachment} from './notice-attachments.js';
 import {verifyNoticeFile} from './notice-file-validation.js';
+import {createPushService} from './push-notifications.js';
 import {waitUntil} from '@vercel/functions';
 import {Readable} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
@@ -91,17 +92,19 @@ const passwordHash = async p => {
 const mailer=createMailer(),emailOutbox=createEmailOutbox({db,mailer});
 const emailPreferences=createEmailPreferences({db,origin:publicOrigin,enqueue:({userId,name,email,token,expires})=>emailOutbox.enqueue({userId,kind:'email-verification',expires,message:{template:'email-verification',to:email,name,verificationUrl:publicOrigin+'/#verify-email/'+token,expiresMinutes:1440}})});
 const teaching=createTeachingService({db,onNotify:async n=>{
+  await push.enqueue(n);
   if(!emailOutbox.enabled)return;
   const recipient=await emailPreferences.teachingRecipient(n.userId,n.type,n.semester);
   if(recipient){const destination=new URL(n.url,publicOrigin);destination.searchParams.set('semester',String(n.semester));const dailyDate=/^daily:\d+:(\d{4}-\d{2}-\d{2}):/.exec(n.reference);if(dailyDate)destination.searchParams.set('date',dailyDate[1]);await emailOutbox.enqueue({userId:n.userId,kind:'class-notification',expires:n.expiresAt,message:{template:'class-notification',notificationId:n.id,type:n.type,semester:n.semester,title:n.title,body:n.body,actionUrl:destination.href,unsubscribeUrl:publicOrigin+'/#unsubscribe/'+recipient.id+'/'+emailOutbox.unsubscribeToken(recipient)}});}
 }});
+const push=createPushService({db,notificationForDelivery:(userId,id)=>teaching.notificationForDelivery(userId,id)});
 const teacherDashboard=createTeacherDashboard({db,teaching});
 const noticeFiles=createNoticeAttachments({db});
 const passwordResets=createPasswordResetService({db,hashPassword:passwordHash,queueDelivery:({userId,name,email,token,expires})=>emailOutbox.enqueue({userId,kind:'password-reset',expires,message:{template:'password-reset',to:email,name,resetUrl:publicOrigin+'/#reset-password/'+token,expiresMinutes:30}}),onConsumed:({userId})=>emailPreferences.markVerified(userId),onDeliveryError:()=>console.error('Email recovery queue is unavailable.')});
 let emailDrainPromise;
 function scheduleEmailDelivery(){
-  if(!emailOutbox.enabled)return;
-  emailDrainPromise??=emailOutbox.drain().catch(()=>console.error('Email queue processing failed.')).finally(()=>{emailDrainPromise=null;});
+  if(!emailOutbox.enabled&&!push.enabled)return;
+  emailDrainPromise??=Promise.allSettled([emailOutbox.drain(),push.drain()]).then(results=>{if(results.some(result=>result.status==='rejected'))console.error('Notification queue processing failed.');}).finally(()=>{emailDrainPromise=null;});
   if(process.env.VERCEL){try{waitUntil(emailDrainPromise);}catch{console.error('Email delivery will retry through its scheduled worker.');}}
 }
 async function queueClassEmails(req,kind,selected,title,body,actionUrl){
@@ -155,10 +158,11 @@ const checkPassword = p => {
   if (p.trim().length < 12) fail(400, 'Use a password with at least 12 non-padding characters.');
   return p;
 };
-async function recordCapacity(table, limit, content = '') {
+async function recordCapacity(table, limit, content = '', replacedContent = '') {
   if ((await get(`SELECT COUNT(*) count FROM ${table}`)).count >= limit) fail(429, 'This workspace has reached its content limit. Ask the administrator to remove unused content.');
   const bytes = (await get("SELECT COALESCE((SELECT SUM(LENGTH(CAST(content AS BLOB))) FROM notes),0)+COALESCE((SELECT SUM(LENGTH(CAST(content AS BLOB))) FROM notices),0)+COALESCE((SELECT SUM(LENGTH(CAST(content AS BLOB))) FROM threads),0)+COALESCE((SELECT SUM(LENGTH(CAST(content AS BLOB))) FROM replies),0) bytes")).bytes;
-  if (bytes + Buffer.byteLength(content,db.provider==='azure-sql'?'utf16le':'utf8') > 64 * 1024 * 1024) fail(413, 'The workspace text storage limit has been reached. Remove unused content first.');
+  const encoding=db.provider==='azure-sql'?'utf16le':'utf8',addedBytes=Math.max(0,Buffer.byteLength(content,encoding)-Buffer.byteLength(replacedContent,encoding));
+  if (bytes + addedBytes > 64 * 1024 * 1024) fail(413, 'The workspace text storage limit has been reached. Remove unused content first.');
 }
 const semester = async v => {
   if (typeof v !== 'number' && (typeof v !== 'string' || !/^[1-9]\d*$/.test(v))) fail(400, 'Choose a valid semester.');
@@ -167,6 +171,11 @@ const semester = async v => {
   return id;
 };
 const semesterLocked = user => Boolean(user && !['admin','teacher'].includes(user.role));
+const approvedReader = user => Boolean(user&&['admin','member','teacher'].includes(user.role));
+function requireClassReader(req){
+  if(!req.user)fail(401,'Please sign in to view your class.');
+  if(!approvedReader(req.user))fail(403,'Your account needs administrator approval before viewing class content.');
+}
 async function currentReader(req) {
   if(req.sessionToken){
     const current=await get('SELECT u.* FROM users u JOIN sessions s ON s.userId=u.id WHERE s.token=? AND s.expires>?',req.sessionToken,Date.now());
@@ -175,28 +184,40 @@ async function currentReader(req) {
   }
   return req.user;
 }
-function checkSemesterAccess(req,selected) {
+async function readerSemesters(req) {
+  requireClassReader(req);
+  if(req.user.role==='admin')return all('SELECT * FROM semesters ORDER BY id');
+  if(req.user.role==='teacher')return (await teacherDashboard.scope(req.user)).semesters;
+  return all('SELECT * FROM semesters WHERE id=?',req.user.semester);
+}
+async function checkSemesterAccess(req,selected) {
+  if(!req.user)fail(401,'Please sign in to view your class.');
   if(semesterLocked(req.user)&&req.user.semester!==selected)fail(403,'Your account is limited to your assigned semester.');
+  requireClassReader(req);
+  if(req.user.role==='teacher'&&!(await readerSemesters(req)).some(row=>row.id===selected))fail(403,'Choose one of your selected or assigned teaching semesters.');
 }
 async function browseSemester(req,value) {
   await currentReader(req);
-  const selected=await semester(value===undefined?(semesterLocked(req.user)?req.user.semester:(await get('SELECT semester FROM settings WHERE id=1')).semester):value);
-  checkSemesterAccess(req,selected);
+  const options=await readerSemesters(req),preferred=req.user.role==='admin'?(await get('SELECT semester FROM settings WHERE id=1')).semester:req.user.semester;
+  const selected=await semester(value===undefined?(options.some(row=>row.id===preferred)?preferred:options[0]?.id):value);
+  await checkSemesterAccess(req,selected);
   return selected;
 }
 async function noteForReader(req,id) {
   return db.transaction(async()=>{
     await currentReader(req);
+    requireClassReader(req);
     const note=await get('SELECT n.*,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.id=?',id);
-    if(note)checkSemesterAccess(req,note.semester);
+    if(note)await checkSemesterAccess(req,note.semester);
     return note;
   });
 }
 async function noticeFileForReader(req,id) {
   return db.transaction(async()=>{
     await currentReader(req);
+    requireClassReader(req);
     const notice=await get('SELECT semester FROM notices WHERE id=?',id);
-    if(notice)checkSemesterAccess(req,notice.semester);
+    if(notice)await checkSemesterAccess(req,notice.semester);
     return notice?noticeFiles.get(id):null;
   });
 }
@@ -239,6 +260,9 @@ const member = (req, res, next) => {req.requiredRole='member';return ['admin', '
 });};
 const admin = (req, res, next) => {req.requiredRole='admin';return req.user?.role === 'admin' ? next() : res.status(403).json({
   error: 'Administrator access is required.'
+});};
+const noticePublisher = (req, res, next) => {req.requiredRole='member';return ['admin','teacher'].includes(req.user?.role) ? next() : res.status(403).json({
+  error: 'An approved teacher or administrator account is required to publish announcements.'
 });};
 const atomic=handler=>async(req,res,next)=>{
   const originalJson=res.json;let payload,sent=false,handlerFinished=false;req.afterCommit=[];
@@ -345,8 +369,8 @@ async function discussionThread(req, id) {
   return thread;
 }
 async function visibleDiscussions(req, selected) {
-  // Membership reads share the assignment/revocation lock with writes. Public
-  // library queries stay independent, and no private thread bytes are fetched
+  // Membership reads share the assignment/revocation lock with writes. Class
+  // library access and private thread access are checked separately; no thread bytes are fetched
   // before the current session, role, and recorded semester are checked.
   if (!req.sessionToken) return [];
   return db.transaction(async () => {
@@ -374,17 +398,27 @@ async function routinesFor(selected){
 async function noticesFor(selected){const files=new Map((await noticeFiles.list(selected)).map(file=>[file.notice_id,publicNoticeAttachment(file)]));return (await all('SELECT n.*,u.name author FROM notices n LEFT JOIN users u ON u.id=n.authorId WHERE n.semester=? ORDER BY n.pinned DESC,n.created DESC',selected)).map(notice=>({...notice,attachment:files.get(notice.id)||null}));}
 app.get('/api/state', async (req, res) => {
   const payload=await db.transaction(async()=>{
+  await currentReader(req);
+  const settings=await get('SELECT * FROM settings'),needsSetup=!await get("SELECT id FROM users WHERE role='admin'");
+  if(!req.user)return {settings,semesters:await all('SELECT id,name FROM semesters ORDER BY id'),selectedSemester:settings.semester,semesterLocked:false,user:null,requiresLogin:true,requiresApproval:false,directUploads:false,emailAvailable:emailOutbox.enabled,emailDelivery:null,needsSetup,subjects:[],notes:[],notices:[],threads:[],routines:{class:null,exam:null},teaching:null,events:[]};
+  if(!approvedReader(req.user)){
+    const selected=await semester(req.query.semester??req.user.semester);if(selected!==req.user.semester)fail(403,'Your account is limited to your assigned semester.');
+    return {settings,semesters:await all('SELECT id,name FROM semesters WHERE id=?',selected),teacherSemesterOptions:req.user.role==='pending'&&req.user.accounttype==='teacher'?await all('SELECT id,name FROM semesters ORDER BY id'):[],selectedSemester:selected,semesterLocked:true,user:publicUser(req.user),requiresLogin:false,requiresApproval:true,directUploads:false,emailAvailable:emailOutbox.enabled,emailDelivery:null,needsSetup,subjects:[],notes:[],notices:[],threads:[],routines:{class:null,exam:null},teaching:null,events:[]};
+  }
   const selected = await browseSemester(req,req.query.semester);
   return {
-    settings: await get('SELECT * FROM settings'),
-    semesters: semesterLocked(req.user)?await all('SELECT * FROM semesters WHERE id=?',selected):await all('SELECT * FROM semesters ORDER BY id'),
+    settings,
+    semesters: await readerSemesters(req),
+    teacherSemesterOptions:req.user.role==='teacher'?await all('SELECT id,name FROM semesters ORDER BY id'):[],
     selectedSemester:selected,
     semesterLocked:semesterLocked(req.user),
+    requiresLogin:false,
+    requiresApproval:false,
     user: publicUser(req.user),
     directUploads:cloudStorage,
     emailAvailable:emailOutbox.enabled,
     emailDelivery:req.user?.role==='admin'&&emailOutbox.enabled?await emailOutbox.status():null,
-    needsSetup: !await get("SELECT id FROM users WHERE role='admin'"),
+    needsSetup,
     subjects: await all('SELECT s.*, (SELECT COUNT(*) FROM notes n WHERE n.subjectId=s.id) noteCount FROM subjects s WHERE semester=? ORDER BY name', selected),
     notes: await all('SELECT n.id,n.subjectId,n.title,n.content,n.originalName,n.mime,n.size,n.authorId,n.created,u.name author,s.name subjectName FROM notes n JOIN subjects s ON s.id=n.subjectId JOIN users u ON u.id=n.authorId WHERE s.semester=? ORDER BY n.created DESC', selected),
     notices: await noticesFor(selected),
@@ -422,6 +456,10 @@ app.delete('/api/teaching/slots/:id',admin,atomic(async(req,res)=>res.json(await
 app.put('/api/daily-routines',admin,atomic(async(req,res)=>{res.json(await teaching.publishDaily(req.user,req.body));req.afterCommit.push(scheduleEmailDelivery);}));
 app.post('/api/teaching/sessions/:id/respond',member,atomic(async(req,res)=>{res.json(await teaching.respond(req.user,req.params.id,req.body));req.afterCommit.push(scheduleEmailDelivery);}));
 app.get('/api/notifications',member,atomic(async(req,res)=>res.json(await teaching.notifications(req.user))));
+app.get('/api/push/config',member,atomic(async(req,res)=>res.json(push.status())));
+app.get('/api/push/devices',member,atomic(async(req,res)=>res.json(await push.list(req.user.id,req.sessionToken))));
+app.post('/api/push/devices',member,atomic(async(req,res)=>res.status(201).json(await push.subscribe(req.user.id,req.sessionToken,req.body))));
+app.delete('/api/push/devices/:id',member,atomic(async(req,res)=>res.json(await push.remove(req.user.id,req.sessionToken,req.params.id))));
 app.patch('/api/notifications/read-all',member,atomic(async(req,res)=>res.json(await teaching.markRead(req.user,'all'))));
 app.patch('/api/notifications/:id/read',member,atomic(async(req,res)=>res.json(await teaching.markRead(req.user,req.params.id))));
 app.get('/api/teacher/dashboard',member,atomic(async(req,res)=>{if(Object.keys(req.query).some(key=>key!=='semester'))fail(400,'Choose a dashboard semester.');const options={};if(req.query.semester!==undefined)options.semester=await semester(req.query.semester);res.json(await teacherDashboard.get(req.user,options));}));
@@ -524,7 +562,7 @@ app.post('/api/internal/email-delivery',async(req,res)=>{
   const secret=process.env.EMAIL_CRON_SECRET,provided=req.get('authorization');
   if(!secret||typeof provided!=='string'||!timingSafeEqual(Buffer.from(hash(provided),'hex'),Buffer.from(hash('Bearer '+secret),'hex')))fail(401,'Access denied.');
   if(storage)await db.transaction(cleanExpiredUploads);
-  const reminders=await teaching.processDue();res.json({...await emailOutbox.drain({limit:30}),reminders});
+  const reminders=await teaching.processDue(),[emailDelivery,pushDelivery]=await Promise.all([emailOutbox.drain({limit:30}),push.drain({limit:200})]);res.json({...emailDelivery,reminders,push:pushDelivery});
 });
 app.post('/api/password', signed, authLimiter, authWork(atomic(async (req, res) => {
   const old = password(req.body.current, 'Current password'), next = checkPassword(password(req.body.password, 'New password'));
@@ -628,7 +666,7 @@ app.post('/api/uploads',member,atomic(async(req,res)=>{
   if(!storage)fail(409,'Direct uploads are not enabled here.');
   await cleanExpiredUploads();
   const name=originalName({originalname:text(req.body.name,'Attachment filename',200)});
-  const purpose=req.body.purpose??'note';if(!['note','notice'].includes(purpose))fail(400,'Choose a valid attachment purpose.');if(purpose==='notice'&&req.user.role!=='admin')fail(403,'Only administrators can attach files to notices.');
+  const purpose=req.body.purpose??'note';if(!['note','notice'].includes(purpose))fail(400,'Choose a valid attachment purpose.');if(purpose==='notice'&&!['admin','teacher'].includes(req.user.role))fail(403,'Only approved teachers and administrators can attach files to announcements.');
   const ext=path.extname(name).toLowerCase(),size=Number(req.body.size);
   if(purpose==='notice'?!Object.hasOwn(noticeAttachmentTypes,ext.slice(1)):!allowed.has(ext))fail(400,'Use a supported attachment type.');
   if(!Number.isSafeInteger(size)||size<1||size>maxUpload)fail(400,'Files must be between 1 byte and 20 MB.');
@@ -802,7 +840,7 @@ app.post('/api/notes', member,(req,res,next)=>{
     const subject = text(req.body.subjectId, 'Subject', 100);
     const selectedSubject=await get('SELECT id,semester FROM subjects WHERE id=?', subject);
     if (!selectedSubject) fail(404, 'Subject not found.');
-    checkSemesterAccess(req,selectedSubject.semester);
+    await checkSemesterAccess(req,selectedSubject.semester);
     const title = text(req.body.title, 'Note title', 150), content = optional(req.body.content, 150000);
     if(cloudStorage)return await saveCloudNote(req,res,{subject,title,content});
     if (!req.file && !content) fail(400, 'Write a note or attach a file.');
@@ -824,18 +862,18 @@ app.post('/api/notes', member,(req,res,next)=>{
   }
 }));
 app.get('/api/my-notes',member,atomic(async(req,res)=>{
-  const locked=semesterLocked(req.user),params=locked?[req.user.id,req.user.semester]:[req.user.id];
-  res.json(await all('SELECT n.id,n.subjectId,n.title,n.content,n.originalName,n.mime,n.size,n.authorId,n.created,s.name subjectName,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.authorId=?'+(locked?' AND s.semester=?':'')+' ORDER BY n.created DESC',...params));
+  const scope=(await readerSemesters(req)).map(row=>row.id);
+  res.json(await all('SELECT n.id,n.subjectId,n.title,n.content,n.originalName,n.mime,n.size,n.authorId,n.created,s.name subjectName,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.authorId=? AND s.semester IN('+scope.map(()=>'?').join(',')+') ORDER BY n.created DESC',req.user.id,...scope));
 }));
 app.put('/api/notes/:id',member,atomic(async(req,res)=>{
   if(Object.keys(req.body).some(key=>!['title','content','subjectId'].includes(key)))fail(400,'Send the note title, content and subject.');
   const note=await get('SELECT n.*,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.id=?',req.params.id);
   if(!note)fail(404,'Note not found.');
-  checkSemesterAccess(req,note.semester);
+  await checkSemesterAccess(req,note.semester);
   if(req.user.role!=='admin'&&note.authorId!==req.user.id)fail(403,'You can only edit your own notes.');
   const subject=text(req.body.subjectId,'Subject',100),title=text(req.body.title,'Note title',150),content=optional(req.body.content,150000);
   const selectedSubject=await get('SELECT id,semester FROM subjects WHERE id=?',subject);if(!selectedSubject)fail(404,'Subject not found.');
-  checkSemesterAccess(req,selectedSubject.semester);
+  await checkSemesterAccess(req,selectedSubject.semester);
   if(!note.filename&&!content)fail(400,'Write a note or keep an existing attachment.');
   // Reuse the workspace text bound without counting this existing note twice.
   const increase=Math.max(0,Buffer.byteLength(content,db.provider==='azure-sql'?'utf16le':'utf8')-Buffer.byteLength(note.content,db.provider==='azure-sql'?'utf16le':'utf8'));
@@ -882,7 +920,7 @@ app.get('/api/notes/:id/download', async (req, res, next) => {
 app.delete('/api/notes/:id', member, atomic(async (req, res) => {
   const n = await get('SELECT n.*,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.id=?', req.params.id);
   if (!n) fail(404, 'Note not found.');
-  checkSemesterAccess(req,n.semester);
+  await checkSemesterAccess(req,n.semester);
   if (req.user.role !== 'admin' && n.authorId !== req.user.id) fail(403, 'You can only delete your own notes.');
   await run('DELETE FROM notes WHERE id=?', n.id);
   req.afterCommit.push(()=>removeFile(n.filename));
@@ -890,13 +928,15 @@ app.delete('/api/notes/:id', member, atomic(async (req, res) => {
     ok: true
   });
 }));
-app.post('/api/notices',admin,(req,res,next)=>{
+app.post('/api/notices',noticePublisher,(req,res,next)=>{
   if(cloudStorage){if(req.is('multipart/form-data'))return res.status(400).json({error:'Upload the attachment first, then submit the notice.'});return next();}
   if(!req.is('multipart/form-data'))return next();
   return uploadReservation(req,res,()=>noticeUpload.single('file')(req,res,next));
 },atomic(async (req, res) => {
   if(Object.keys(req.body).some(key=>!['semester','title','category','content','pinned','uploadId'].includes(key)))fail(400,'Send the notice details and its attachment.');
   const id=randomUUID(),category=text(req.body.category,'Category',30),content=optional(req.body.content,10000),title=text(req.body.title,'Title',150),selected=await semester(req.body.semester);
+  if(!['admin','teacher'].includes(req.user.role))fail(403,'Announcement publishing access was revoked.');
+  await checkSemesterAccess(req,selected);
   if (!['General', 'Exam', 'Deadline', 'Event'].includes(category)) fail(400, 'Invalid category.');
   if(req.is('multipart/form-data')&&['true','false'].includes(req.body.pinned))req.body.pinned=req.body.pinned==='true';
   if (req.body.pinned !== undefined && typeof req.body.pinned !== 'boolean') fail(400, 'Pinned must be true or false.');
@@ -921,9 +961,9 @@ app.post('/api/notices',admin,(req,res,next)=>{
   await recordCapacity('notices', 1000, content);
   await run('INSERT INTO notices (id,semester,title,content,category,pinned,authorId,created) VALUES(?,?,?,?,?,?,?,?)',id,selected,title,content,category,req.body.pinned?1:0,req.user.id,now());
   if(attachment)await noticeFiles.attach(id,attachment);
-  await teaching.notifyNotice({id,semester:selected,title,authorId:req.user.id});req.afterCommit.push(scheduleEmailDelivery);
+  const {notified}=await teaching.notifyNotice({id,semester:selected,title,authorId:req.user.id});req.afterCommit.push(scheduleEmailDelivery);
   res.status(201).json({
-    id
+    id,notified
   });
 }));
 app.get('/api/notices/:id/preview',async(req,res)=>{
@@ -941,14 +981,29 @@ app.get('/api/notices/:id/download',async(req,res,next)=>{
   if(storage)return res.redirect(302,await storage.signedDownload(file.filename,file.original_name));
   res.set({'X-Content-Type-Options':'nosniff','Content-Type':'application/octet-stream','Content-Security-Policy':"sandbox; default-src 'none'"});res.download(attachmentPath(file.filename),file.original_name,error=>{if(error&&!res.headersSent)next(error);});
 });
-app.patch('/api/notices/:id', admin, atomic(async (req, res) => {
-  if (typeof req.body.pinned !== 'boolean') fail(400, 'Pinned must be true or false.');
-  await run('UPDATE notices SET pinned=? WHERE id=?', req.body.pinned ? 1 : 0, req.params.id);
+async function noticeForWriter(req,id){
+  if(!['admin','teacher'].includes(req.user.role))fail(403,'Announcement publishing access was revoked.');
+  const notice=await get('SELECT * FROM notices WHERE id=?',id);
+  if(!notice)fail(404,'Announcement not found.');
+  await checkSemesterAccess(req,notice.semester);
+  if(req.user.role!=='admin'&&notice.authorId!==req.user.id)fail(403,'You can only edit or delete your own announcements.');
+  return notice;
+}
+app.patch('/api/notices/:id', noticePublisher, atomic(async (req, res) => {
+  const notice=await noticeForWriter(req,req.params.id),keys=Object.keys(req.body);
+  if(!keys.length||keys.some(key=>!['title','content','category','pinned'].includes(key)))fail(400,'Edit the announcement title, message, category, or pin.');
+  const title=req.body.title===undefined?notice.title:text(req.body.title,'Title',150),content=req.body.content===undefined?notice.content:optional(req.body.content,10000),category=req.body.category===undefined?notice.category:text(req.body.category,'Category',30);
+  if(!['General','Exam','Deadline','Event'].includes(category))fail(400,'Invalid category.');
+  if(req.body.pinned!==undefined&&typeof req.body.pinned!=='boolean')fail(400,'Pinned must be true or false.');
+  if(!content&&!await noticeFiles.get(notice.id))fail(400,'Write an announcement or retain its PDF or photo.');
+  await recordCapacity('notices',1001,content,notice.content);
+  await run('UPDATE notices SET title=?,content=?,category=?,pinned=? WHERE id=?',title,content,category,req.body.pinned===undefined?notice.pinned:Number(req.body.pinned),notice.id);
   res.json({
     ok: true
   });
 }));
-app.delete('/api/notices/:id', admin, atomic(async (req, res) => {
+app.delete('/api/notices/:id', noticePublisher, atomic(async (req, res) => {
+  await noticeForWriter(req,req.params.id);
   const attachment=await noticeFiles.get(req.params.id);
   await run('DELETE FROM notices WHERE id=?', req.params.id);
   if(attachment)req.afterCommit.push(()=>removeFile(attachment.filename));

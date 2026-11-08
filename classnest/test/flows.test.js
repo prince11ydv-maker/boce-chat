@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net from 'node:net';
 const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-test('shared classroom: permissions, CRUD, files, persistence, and public reading',async()=>{
+test('shared classroom: permissions, CRUD, files, persistence, and authenticated reading',async()=>{
  const dir=mkdtempSync(path.join(tmpdir(),'classnest-test-'));
  const free=net.createServer();await new Promise(r=>free.listen(0,'127.0.0.1',r));const port=free.address().port;await new Promise(r=>free.close(r));
  const base=`http://127.0.0.1:${port}`;let child;
@@ -29,8 +29,8 @@ test('shared classroom: permissions, CRUD, files, persistence, and public readin
  r=await request('/api/subjects',{method:'POST',cookie:student,body:{name:'No privilege',semester:3}});assert.equal(r.status,403);
  const upload=new FormData();upload.set('subjectId',subject);upload.set('title','My revision note');upload.set('content','A useful explanation.');upload.set('file',new Blob(['%PDF-1.4\nTest document'],{type:'application/pdf'}),'revision.pdf');
  r=await request('/api/notes',{method:'POST',cookie:student,body:upload});assert.equal(r.status,201);const note=r.body.id;
- r=await request('/api/notes/'+note+'/download');assert.equal(r.status,200);assert.match(r.body,/%PDF/);assert.match(r.headers.get('content-disposition'),/attachment/);
- r=await request('/api/state');assert.equal(r.body.notes[0].title,'My revision note');assert.equal(r.body.subjects[0].noteCount,1);assert.ok(!('filename' in r.body.notes[0]));assert.equal(r.body.user,null);
+ r=await request('/api/notes/'+note+'/download',{cookie:student});assert.equal(r.status,200);assert.match(r.body,/%PDF/);assert.match(r.headers.get('content-disposition'),/attachment/);
+ r=await request('/api/state',{cookie:student});assert.equal(r.body.notes[0].title,'My revision note');assert.equal(r.body.subjects[0].noteCount,1);assert.ok(!('filename' in r.body.notes[0]));assert.equal(r.body.user.id,studentId);
  const invalid=new FormData();invalid.set('subjectId',subject);invalid.set('title','Executable');invalid.set('file',new Blob(['bad']),'bad.html');r=await request('/api/notes',{method:'POST',cookie:student,body:invalid});assert.equal(r.status,400);
  r=await request('/api/notices',{method:'POST',cookie:owner,body:{title:'Exam update',content:'Bring your calculator.',category:'Exam',pinned:true,semester:3}});assert.equal(r.status,201);const notice=r.body.id;
  r=await request('/api/notices',{method:'POST',cookie:student,body:{}});assert.equal(r.status,403);
@@ -47,7 +47,7 @@ test('shared classroom: permissions, CRUD, files, persistence, and public readin
  r=await request('/api/users/'+studentId,{method:'PATCH',cookie:owner,body:{role:'blocked'}});assert.equal(r.status,200);
  r=await request('/api/notes/'+note,{method:'DELETE',cookie:student});assert.equal(r.status,403);
  r=await request('/api/subjects/'+subject,{method:'DELETE',cookie:owner});assert.equal(r.status,200);
- r=await request('/api/notes/'+note+'/download');assert.equal(r.status,404);
+ r=await request('/api/notes/'+note+'/download',{cookie:owner});assert.equal(r.status,404);
  r=await request('/api/threads/'+thread,{method:'DELETE',cookie:owner});assert.equal(r.status,200);r=await request('/api/threads/'+thread+'/replies',{cookie:owner});assert.equal(r.status,404);
  r=await request('/api/notices/'+notice,{method:'DELETE',cookie:owner});assert.equal(r.status,200);
  r=await request('/api/events/'+event,{method:'DELETE',cookie:owner});assert.equal(r.status,200);

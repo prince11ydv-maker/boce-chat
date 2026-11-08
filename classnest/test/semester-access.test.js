@@ -18,7 +18,7 @@ async function fixture(){
  return {request,async close(){if(!child.killed){const ended=new Promise(resolve=>child.once('exit',resolve));child.kill();await ended;}rmSync(dir,{recursive:true,force:true});}};
 }
 
-test('semester membership locks signed students while anonymous notes stay public and discussions stay private',async()=>{
+test('semester membership locks signed students while guests receive only login metadata and discussions stay private',async()=>{
  const f=await fixture();try{
   let r=await f.request('/api/setup',{method:'POST',body:{name:'Owner',email:'owner@example.com',password:'Owner semester test password'}});assert.equal(r.status,201);const owner=r.cookie;assert.equal(r.body.semester,3);
   for(const [index,value] of [undefined,999,'invalid',2.5].entries()){
@@ -54,7 +54,7 @@ test('semester membership locks signed students while anonymous notes stay publi
   r=await f.request('/api/subjects',{method:'POST',cookie:owner,body:{semester:4,name:'Public semester four subject'}});assert.equal(r.status,201);const subjectId=r.body.id;
   const note=new FormData();note.set('subjectId',subjectId);note.set('title','Public note from semester four');note.set('content','Shared study notes remain available to everyone.');
   r=await f.request('/api/notes',{method:'POST',cookie:owner,body:note});assert.equal(r.status,201);
-  r=await f.request('/api/state?semester=4');assert.equal(r.status,200);assert.equal(r.body.notes[0].title,'Public note from semester four');assert.deepEqual(r.body.threads,[]);
+  r=await f.request('/api/state?semester=4');assert.equal(r.status,200);assert.equal(r.body.requiresLogin,true);assert.deepEqual(r.body.notes,[]);assert.deepEqual(r.body.subjects,[]);assert.deepEqual(r.body.threads,[]);assert.ok(!JSON.stringify(r.body).includes('Public note from semester four'));
   for(const cookie of [third.cookie,pending.cookie]){r=await f.request('/api/state?semester=4',{cookie});assert.equal(r.status,403);assert.match(r.body.error,/assigned semester/);}
   r=await f.request('/api/users/'+third.id,{method:'PATCH',cookie:third.cookie,body:{semester:4}});assert.equal(r.status,403,'Students cannot move themselves into another private discussion');
   r=await f.request('/api/users/'+third.id,{method:'PATCH',cookie:owner,body:{semester:999,role:'blocked'}});assert.equal(r.status,400);

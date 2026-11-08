@@ -93,6 +93,7 @@ export async function openDatabase({provider=process.env.DB_PROVIDER||'sqlite',d
     db.sqlite.exec(readFileSync(path.join(root,'schema','teaching-sqlite.sql'),'utf8'));
     db.sqlite.exec(readFileSync(path.join(root,'schema','teacher-semesters-sqlite.sql'),'utf8'));
     db.sqlite.exec(readFileSync(path.join(root,'schema','notice-attachments-sqlite.sql'),'utf8'));
+    db.sqlite.exec(readFileSync(path.join(root,'schema','push-sqlite.sql'),'utf8'));
   }
   return db;
 }

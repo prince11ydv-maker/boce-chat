@@ -98,11 +98,12 @@ export function createEmailPreferences({db,enqueue,origin,now=Date.now,onDeliver
     return recipients.filter(account=>account.role!=='member'||!Number.isInteger(account.semester)||account.semester===semester).map(({id,name,email})=>({id,name,email}));
   }
   async function teachingRecipient(userId,type,semester){
-    if(!['note','notice','daily-routine','teacher-reminder','class-status'].includes(type))throw new EmailPreferencesError('Choose a valid class notification type.');
+    if(!['note','notice','daily-routine','teacher-reminder','class-reminder','class-status'].includes(type))throw new EmailPreferencesError('Choose a valid class notification type.');
     await semesterValue(semester);
     const account=await user(userId),preference=await db.get('SELECT * FROM email_preferences WHERE userId=?',userId);
     if(!['member','teacher','admin'].includes(account.role)||Number(preference?.verified)!==1)return null;
     if(type==='teacher-reminder')return account.role==='teacher'&&Number(preference.teacherreminders)===1?{id:account.id,name:account.name,email:account.email,role:account.role}:null;
+    if(type==='class-reminder'&&account.role!=='member')return null;
     const column=type==='note'?'notes':type==='notice'?'notices':'events';
     if(Number(preference[column])!==1||Number(preference.semester)!==semester)return null;
     if(account.role==='member'&&Number.isInteger(account.semester)&&account.semester!==semester)return null;

@@ -2,7 +2,7 @@
 // Only this fixed, public connection screen is available offline.
 // Change the version when these offline assets change. Never add API/user files.
 const CACHE_PREFIX = 'classnest-public-offline-';
-const CACHE_NAME = CACHE_PREFIX + '2026-11-08-v1';
+const CACHE_NAME = CACHE_PREFIX + '2026-11-08-v2';
 const OFFLINE_PAGE = '/offline.html';
 const PUBLIC_ASSETS = Object.freeze([
   OFFLINE_PAGE, '/offline.css', '/app-icons/icon-192.png',
@@ -43,4 +43,27 @@ self.addEventListener('fetch', event => {
       status: 503, headers: {'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store'}
     });
   }));
+});
+
+// Payloads carry only an opaque notification ID. Class content is fetched after sign-in.
+self.addEventListener('push', event => {
+  let id;
+  try{id=event.data?.json()?.notificationId;}catch{return;}
+  if(typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id))return;
+  event.waitUntil(self.registration.showNotification('Classnest',{
+    body:'New class update. Sign in to view it.',icon:'/app-icons/icon-192.png',badge:'/app-icons/icon-192.png',
+    tag:'classnest-'+id,data:{notificationId:id}
+  }));
+});
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const id=event.notification.data?.notificationId;
+  const destination=new URL('/#notifications'+(typeof id==='string'&&/^[a-f0-9]{64}$/.test(id)?'/'+id:''),self.location.origin).href;
+  event.waitUntil((async()=>{
+    const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    for(const client of windows){let origin;try{origin=new URL(client.url).origin;}catch{continue;}if(origin!==self.location.origin)continue;
+      try{if('navigate' in client)await client.navigate(destination);return await client.focus();}catch{ /* The window may have closed between lookup and focus. */ }
+    }
+    return self.clients.openWindow(destination);
+  })());
 });

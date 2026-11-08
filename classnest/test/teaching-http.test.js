@@ -35,7 +35,7 @@ test('teacher approval, distinct login portals, owned note editing, daily alerts
   r=await req('/teacher/dashboard?semester=4','GET',undefined,teacher.cookie);assert.equal(r.status,200);assert.equal(r.body.counts.notes,0);assert.equal(r.body.notes.length,0);
   assert.equal((await req('/notes/'+noteId,'PUT',{subjectId,title:'Attempted takeover',content:'Changed'},student.cookie)).status,403);
   assert.equal((await req('/notes/'+noteId,'PUT',{subjectId,title:'Edited teacher note',content:'Updated explanation'},teacher.cookie)).status,200);
-  r=await req('/state?semester=3');assert.equal(r.body.notes.find(n=>n.id===noteId).content,'Updated explanation');
+  r=await req('/state?semester=3','GET',undefined,student.cookie);assert.equal(r.body.notes.find(n=>n.id===noteId).content,'Updated explanation');
   r=await req('/notifications','GET',undefined,student.cookie);assert.equal(r.status,200);assert.ok(r.body.items.some(n=>n.type==='note'));
   r=await req('/notifications','GET',undefined,other.cookie);assert.deepEqual(r.body.items,[]);
   const future=new Date(Date.now()+10*60000+345*60000);if(future.getUTCHours()===23&&future.getUTCMinutes()>20){future.setUTCDate(future.getUTCDate()+1);future.setUTCHours(0,10,0,0);}const date=future.toISOString().slice(0,10),start=future.toISOString().slice(11,16),end=new Date(future.getTime()+30*60000).toISOString().slice(11,16);
@@ -43,12 +43,12 @@ test('teacher approval, distinct login portals, owned note editing, daily alerts
   assert.equal((await req('/daily-routines','PUT',daily,teacher.cookie)).status,403);
   assert.equal((await req('/daily-routines','PUT',daily,admin)).status,200);
   assert.equal((await req('/daily-routines','PUT',daily,admin)).status,409);
-  r=await req('/teaching/state?semester=3&date='+date);assert.equal(r.body.source,'daily');const session=r.body.sessions[0];assert.equal(session.teacherName,'teacher');
+  r=await req('/teaching/state?semester=3&date='+date,'GET',undefined,student.cookie);assert.equal(r.body.source,'daily');const session=r.body.sessions[0];assert.equal(session.teacherName,'teacher');
   assert.equal((await req('/teaching/sessions/'+session.id+'/respond','POST',{response:'coming',eta:'1-5',reason:'',revision:session.revision},student.cookie)).status,403);
   assert.equal((await req('/teaching/sessions/'+session.id+'/respond','POST',{response:'absent',eta:'',reason:'',revision:session.revision},teacher.cookie)).status,400);
   r=await req('/teaching/sessions/'+session.id+'/respond','POST',{response:'coming',eta:'5-10',reason:'',revision:session.revision},teacher.cookie);assert.equal(r.status,200);assert.equal(r.body.response,'coming');
   r=await req('/teaching/sessions/'+session.id+'/respond','POST',{response:'absent',eta:'',reason:'Unable to attend today',revision:r.body.revision},teacher.cookie);assert.equal(r.status,200);
-  r=await req('/teaching/state?semester=3&date='+date);assert.ok(!JSON.stringify(r.body).includes('Unable to attend today'),'Absence reasons are private to class notifications');
+  r=await req('/teaching/state?semester=3&date='+date,'GET',undefined,student.cookie);assert.ok(!JSON.stringify(r.body).includes('Unable to attend today'),'Absence reasons are private to class notifications');
   r=await req('/notifications','GET',undefined,student.cookie);assert.ok(r.body.items.some(n=>n.type==='daily-routine'));assert.ok(r.body.items.some(n=>n.body.includes('Unable to attend today')));const id=r.body.items[0].id;
   assert.equal((await req('/notifications/'+id+'/read','PATCH',{},other.cookie)).status,404);assert.equal((await req('/notifications/'+id+'/read','PATCH',{},student.cookie)).status,200);
   assert.equal((await req('/users/'+student.id,'PATCH',{semester:4},admin)).status,200);r=await req('/notifications','GET',undefined,student.cookie);assert.deepEqual(r.body.items,[],'Reassignment removes access to old class alerts');

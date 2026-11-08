@@ -3,4 +3,15 @@
     <string name="app_name">Classnest</string>
     <string name="try_again">Try again</string>
     <string name="open_website">Open website in browser</string>
+    <string name="phone_alert_channel">Class updates</string>
+    <string name="phone_alert_channel_description">New notes, teacher announcements, timetable updates, and class reminders.</string>
+    <string name="phone_alert_generic">You have a new class update. Open Classnest to view it.</string>
+    <string name="phone_alert_unavailable">Phone alerts are not configured for this app build yet. Your account inbox remains available.</string>
+    <string name="phone_alert_sign_in">Sign in to an approved Classnest account, then enable phone alerts again.</string>
+    <string name="phone_alert_permission">Allow Classnest notifications in your phone settings to receive class alerts.</string>
+    <string name="phone_alert_retry">Phone alerts could not connect. Check your connection and try enabling them again.</string>
+    <string name="phone_alert_enabled">Phone alerts are connected to your current Classnest account.</string>
+    <string name="phone_alert_disabled">Phone alerts are off for this app.</string>
+    <string name="phone_alert_enable">Enable phone alerts</string>
+    <string name="phone_alert_disable">Turn off phone alerts</string>
 </resources>

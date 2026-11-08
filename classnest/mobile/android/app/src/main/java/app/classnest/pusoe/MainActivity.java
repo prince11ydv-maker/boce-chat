@@ -2,9 +2,11 @@ package app.classnest.pusoe;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.Manifest;
 import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -17,6 +19,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -52,6 +55,7 @@ import java.util.Locale;
 /** Native Android client for the trusted, same-origin Classnest application. */
 public final class MainActivity extends Activity {
     private static final int FILE_PICKER = 2204;
+    private static final int PHONE_ALERT_PERMISSION = 2205;
     private static final int BRAND = Color.rgb(69, 69, 154);
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<WebView> pendingPopups = new ArrayList<>();
@@ -64,6 +68,13 @@ public final class MainActivity extends Activity {
     private ValueCallback<Uri[]> selectedFiles;
     private boolean allowMultipleFiles, destroyed, failed, backPending;
     private OnBackInvokedCallback backCallback;
+    private final Runnable pushSync = new Runnable() {
+        @Override public void run() {
+            if (destroyed) return;
+            NativePush.synchronize(MainActivity.this, false);
+            mainHandler.postDelayed(this, 30000);
+        }
+    };
     private final Runnable loadTimeout = () -> {
         if (!destroyed && loading != null && loading.getVisibility() == View.VISIBLE) {
             if (webView != null) webView.stopLoading();
@@ -83,6 +94,7 @@ public final class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         }
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+        NativePush.createChannel(this);
         buildNativeLayout();
         createWebView();
         if (Build.VERSION.SDK_INT >= 33) {
@@ -93,6 +105,22 @@ public final class MainActivity extends Activity {
             || !UrlPolicy.isFirstParty(webView.getUrl())) {
             webView.loadUrl(UrlPolicy.HOME);
         }
+        openNotification(getIntent());
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openNotification(intent);
+    }
+
+    private void openNotification(Intent intent) {
+        if (intent == null || !"CLASSNEST_NOTIFICATION".equals(intent.getAction()) || webView == null) return;
+        String destination = UrlPolicy.notificationDestination(intent.getStringExtra("url"));
+        webView.loadUrl(destination == null ? UrlPolicy.ORIGIN + "/#notifications" : destination);
+        // A later orientation change must not reopen a previously consumed alert.
+        intent.setAction(Intent.ACTION_MAIN);
+        intent.removeExtra("url");
     }
 
     private void buildNativeLayout() {
@@ -237,6 +265,7 @@ public final class MainActivity extends Activity {
             mainHandler.removeCallbacks(loadTimeout);
             loading.setVisibility(View.GONE);
             CookieManager.getInstance().flush();
+            NativePush.synchronize(MainActivity.this, false);
             if (!failed && UrlPolicy.isFirstParty(url)) errorPanel.setVisibility(View.GONE);
         }
 
@@ -407,6 +436,7 @@ public final class MainActivity extends Activity {
         menu.getMenu().add(0, 2, 1, "Open in browser");
         menu.getMenu().add(0, 3, 2, "Share Classnest");
         menu.getMenu().add(0, 4, 3, "About Classnest");
+        menu.getMenu().add(0, 5, 4, NativePush.enabled(this) ? R.string.phone_alert_disable : R.string.phone_alert_enable);
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) new AlertDialog.Builder(this).setTitle("Reload Classnest?")
                 .setMessage("Finish or save any changes before reloading.").setNegativeButton("Keep working", null)
@@ -421,9 +451,39 @@ public final class MainActivity extends Activity {
             if (item.getItemId() == 4) new AlertDialog.Builder(this).setTitle("Classnest")
                 .setMessage("Your class, connected.\n\nUse your existing Classnest account to share notes and keep up with class. An internet connection is needed for current content.\n\nVersion " + BuildConfig.VERSION_NAME)
                 .setPositiveButton("Done", null).show();
+            if (item.getItemId() == 5) {
+                if (NativePush.enabled(this)) NativePush.disable(this);
+                else new AlertDialog.Builder(this).setTitle(R.string.phone_alert_enable)
+                    .setMessage("Get phone alerts for new notes, announcements, and class updates, even when Classnest is closed. Open the app to read the details. You can turn alerts off from this menu.")
+                    .setNegativeButton("Not now", null)
+                    .setPositiveButton("Continue", (dialog, which) -> requestPhoneAlerts()).show();
+            }
             return true;
         });
         menu.show();
+    }
+
+    private void requestPhoneAlerts() {
+        if (!NativePush.configured(this)) { Toast.makeText(this, R.string.phone_alert_unavailable, Toast.LENGTH_LONG).show(); return; }
+        if (NativePush.sessionCookie().isEmpty()) { Toast.makeText(this, R.string.phone_alert_sign_in, Toast.LENGTH_LONG).show(); return; }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, PHONE_ALERT_PERMISSION);
+            return;
+        }
+        if (!NativePush.permissionGranted(this)) {
+            Toast.makeText(this, R.string.phone_alert_permission, Toast.LENGTH_LONG).show();
+            Intent settings = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            try { startActivity(settings); } catch (ActivityNotFoundException ignored) { }
+            return;
+        }
+        NativePush.enable(this);
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != PHONE_ALERT_PERMISSION) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) NativePush.enable(this);
+        else Toast.makeText(this, R.string.phone_alert_permission, Toast.LENGTH_LONG).show();
     }
 
     private void openExternal(String url) {
@@ -482,12 +542,15 @@ public final class MainActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         CookieManager.getInstance().flush();
+        mainHandler.removeCallbacks(pushSync);
         if (webView != null) webView.onPause();
     }
 
     @Override protected void onResume() {
         super.onResume();
         if (webView != null) webView.onResume();
+        mainHandler.removeCallbacks(pushSync);
+        mainHandler.post(pushSync);
     }
 
     @Override public void onConfigurationChanged(Configuration newConfig) {

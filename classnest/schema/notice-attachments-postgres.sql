@@ -19,4 +19,4 @@ DO $$ BEGIN
   END IF;
 END $$;
 ALTER TABLE public.app_notifications DROP CONSTRAINT IF EXISTS app_notifications_type_check;
-ALTER TABLE public.app_notifications ADD CONSTRAINT app_notifications_type_check CHECK(type IN('note','notice','daily-routine','teacher-reminder','class-status'));
+ALTER TABLE public.app_notifications ADD CONSTRAINT app_notifications_type_check CHECK(type IN('note','notice','daily-routine','teacher-reminder','class-reminder','class-status'));

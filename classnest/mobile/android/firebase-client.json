@@ -1,0 +1,14 @@
+{
+  "project_info": {
+    "project_number": "831213551487",
+    "project_id": "classnest-pu-soe"
+  },
+  "client": [{
+    "client_info": {
+      "mobilesdk_app_id": "1:831213551487:android:ddf00d3c9adbc7c7c9e44a",
+      "android_client_info": {"package_name": "app.classnest.pusoe"}
+    },
+    "api_key": [{"current_key": "AIzaSyAZWoxwY9B5n2OxIWcLvcq_5jqpVhKFOAc"}]
+  }],
+  "configuration_version": "1"
+}

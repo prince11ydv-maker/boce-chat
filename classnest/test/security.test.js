@@ -50,7 +50,7 @@ test('security: rebinding, CSRF, malformed bodies, private registration, attachm
  assert.equal(readdirSync(path.join(f.dir,'uploads')).length,before);
  r=await f.request('/api/notes',{method:'POST',cookie:owner,body:noteForm(subject)});assert.equal(r.status,201);const ownerNote=r.body.id;
  r=await f.request('/api/notes/'+ownerNote,{method:'DELETE',cookie:student});assert.equal(r.status,403);
- r=await f.request('/api/notes/'+ownerNote+'/download');assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'application/octet-stream');assert.match(r.headers.get('content-security-policy'),/sandbox/);
+ r=await f.request('/api/notes/'+ownerNote+'/download',{cookie:student});assert.equal(r.status,200);assert.equal(r.headers.get('content-type'),'application/octet-stream');assert.match(r.headers.get('content-security-policy'),/sandbox/);
  r=await f.request('/api/notes',{method:'POST',cookie:student,body:noteForm(subject,'Office handout','handout.docx',officeFixture())});assert.equal(r.status,201);
  r=await f.request('/api/notes',{method:'POST',cookie:student,body:noteForm(subject,'Text note','notes.txt','Plain UTF-8 study text')});assert.equal(r.status,201);
  const db=f.db();try{db.prepare('UPDATE notes SET size=? WHERE id=?').run(700*1024*1024,ownerNote);}finally{db.close();}

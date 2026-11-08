@@ -73,6 +73,27 @@ test('class mail is encrypted, deduplicated by notification, delivered once to c
   }finally{await f.close();}
 });
 
+test('student reminder email uses events consent and suppresses stale class, membership and role changes',async()=>{
+  for(const change of [null,
+    (f,o)=>f.db.run("UPDATE users SET semester=4 WHERE id='student'"),
+    (f,o)=>f.db.run("UPDATE users SET role='blocked' WHERE id='student'"),
+    (f,o)=>f.db.run("UPDATE email_preferences SET events=0 WHERE userId='student'"),
+    (f,o)=>f.db.run("UPDATE class_occurrences SET response='absent' WHERE id=?",o.id),
+    (f,o)=>f.db.run('UPDATE class_occurrences SET active=0 WHERE id=?',o.id),
+    (f,o)=>f.db.run('UPDATE class_occurrences SET starts_at=? WHERE id=?',f.now(),o.id)
+  ]){
+    const f=await fixture();try{
+      await f.optIn('student');const occurrence=await f.occurrence();
+      assert.equal((await f.preferences.teachingRecipient('student','class-reminder',3)).id,'student');
+      assert.equal(await f.preferences.teachingRecipient('teacher','class-reminder',3),null);
+      const n=await f.notification('student','class-reminder',occurrence.id);await f.enqueue(n);
+      if(change)await change(f,occurrence);
+      await f.outbox.drain();assert.equal(f.calls.length,change?0:1);
+      if(!change)assert.equal(f.calls[0].type,'class-reminder');
+    }finally{await f.close();}
+  }
+});
+
 test('note and daily emails suppress moved students, deleted notes and superseded daily publications',async()=>{
   const f=await fixture();try{
     await f.optIn('student');

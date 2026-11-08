@@ -103,7 +103,7 @@ export function createMailer({env=process.env,transportFactory}={}){
     else if(message.template==='email-verification')content=renderVerificationEmail(data);
     else if(message.template==='notification')content=renderNotificationEmail(data);
     else if(message.template==='class-notification'){
-      if(!['note','notice','daily-routine','teacher-reminder','class-status'].includes(message.type))throw inputError();
+      if(!['note','notice','daily-routine','teacher-reminder','class-reminder','class-status'].includes(message.type))throw inputError();
       content=renderNotificationEmail({...data,subject:data.subject||('Classnest · '+oneLine(data.title,150)).slice(0,150),actionLabel:message.type==='teacher-reminder'?'Respond to your class reminder':message.type==='notice'?'Read this notice':'Open your class workspace'});
     }
     else throw inputError();

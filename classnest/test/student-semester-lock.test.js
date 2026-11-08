@@ -36,12 +36,12 @@ async function fixture(){
 function noteForm(subject,title){const body=new FormData();body.set('subjectId',subject);body.set('title',title);body.set('content','Study material for '+title);body.set('file',new Blob(['Attachment for '+title],{type:'text/plain'}),title+'.txt');return body;}
 function noticeForm(selected){const body=new FormData();for(const[key,value]of Object.entries({semester:selected,title:'Semester '+selected+' notice',category:'General',content:'',pinned:'false'}))body.set(key,String(value));body.set('file',new Blob([png],{type:'image/png'}),'notice.png');return body;}
 
-test('signed students stay in their assigned semester across state, timetable, notes and notice files while guests and approved staff retain public browsing',async()=>{
+test('class content requires login and students and teachers stay within their current semester scope across state, timetable, notes and notice files',async()=>{
   const f=await fixture(),req=f.request;
   try{
     let result=await req('/setup','POST',{name:'Owner',email:'lock-owner@example.test',password:'Student lock owner password'});assert.equal(result.status,201);const admin=result.cookie;
     async function account(name,type='student',selected=3){const body={name,email:name+'@example.test',password:'Student lock account password',semester:selected,accountType:type,...(type==='teacher'?{semesters:[3,4]}:{})};assert.equal((await req('/register','POST',body)).status,202);const login=await req('/login','POST',body);assert.equal(login.status,200);return {...login.body,cookie:login.cookie};}
-    const student=await account('locked-student'),teacher=await account('approved-teacher','teacher'),pendingTeacher=await account('pending-teacher','teacher');
+    const student=await account('locked-student'),teacher=await account('approved-teacher','teacher'),pendingTeacher=await account('pending-teacher','teacher'),otherSemesterApplicant=await account('new-semester-student','student',4);
     for(const[user,role]of[[student,'member'],[teacher,'teacher']])assert.equal((await req('/users/'+user.id,'PATCH',{role},admin)).status,200);
     const subjects={},notes={},notices={};
     for(const selected of[3,4]){
@@ -49,18 +49,35 @@ test('signed students stay in their assigned semester across state, timetable, n
       result=await req('/notes','POST',noteForm(subjects[selected],'Semester '+selected),admin);assert.equal(result.status,201);notes[selected]=result.body.id;
       result=await req('/notices','POST',noticeForm(selected),admin);assert.equal(result.status,201);notices[selected]=result.body.id;
     }
-    result=await req('/state','GET',undefined,student.cookie);assert.equal(result.status,200);assert.equal(result.body.selectedSemester,3);assert.equal(result.body.semesterLocked,true);assert.deepEqual(result.body.semesters.map(s=>s.id),[3]);assert.equal(result.body.notes[0].id,notes[3]);
+    async function approvalGate(user,selected,role){
+      const state=await req('/state','GET',undefined,user.cookie);assert.equal(state.status,200);assert.equal(state.body.user.role,role);assert.equal(state.body.requiresLogin,false);assert.equal(state.body.requiresApproval,true);assert.equal(state.body.semesterLocked,true);assert.equal(state.body.selectedSemester,selected);assert.deepEqual(state.body.semesters.map(row=>row.id),[selected]);assert.equal(state.body.directUploads,false);
+      for(const key of['subjects','notes','notices','threads','events'])assert.deepEqual(state.body[key],[]);assert.deepEqual(state.body.routines,{class:null,exam:null});assert.equal(state.body.teaching,null);assert.ok(!JSON.stringify(state.body).includes('Study material'));assert.ok(!JSON.stringify(state.body).includes('Locked semester'));
+      assert.equal((await req('/state?semester='+selected,'GET',undefined,user.cookie)).body.requiresApproval,true);assert.equal((await req('/teaching/state?semester='+selected,'GET',undefined,user.cookie)).status,403);assert.equal((await req('/teaching/workspace?semester='+selected,'GET',undefined,user.cookie)).status,403);
+      for(const target of[3,4])for(const type of['notes','notices'])for(const action of['preview','download'])assert.equal((await req(`/${type}/${type==='notes'?notes[target]:notices[target]}/${action}`,'GET',undefined,user.cookie)).status,403,'An unapproved account cannot read even its declared semester attachments');
+      assert.equal((await req('/notes/missing/preview','GET',undefined,user.cookie)).status,403);assert.equal((await req('/notices/missing/download','GET',undefined,user.cookie)).status,403);
+      return state.body;
+    }
+    const pendingState=await approvalGate(pendingTeacher,3,'pending');assert.ok(pendingState.teacherSemesterOptions.some(row=>row.id===5));assert.equal((await req('/teacher/semesters','PUT',{semesters:[4,5]},pendingTeacher.cookie)).status,200);assert.equal((await req('/teacher/dashboard','GET',undefined,pendingTeacher.cookie)).status,403);assert.equal((await req('/state','GET',undefined,pendingTeacher.cookie)).body.selectedSemester,3,'Teacher profile choices cannot approve reading or change primary membership');
+    await approvalGate(otherSemesterApplicant,4,'pending');
+    assert.equal((await req('/users/'+otherSemesterApplicant.id,'PATCH',{role:'member'},admin)).status,200);result=await req('/state','GET',undefined,otherSemesterApplicant.cookie);assert.equal(result.body.requiresApproval,false);assert.equal(result.body.notes[0].id,notes[4]);assert.equal((await req('/notes/'+notes[4]+'/download','GET',undefined,otherSemesterApplicant.cookie)).status,200);
+    assert.equal((await req('/users/'+otherSemesterApplicant.id,'PATCH',{role:'blocked'},admin)).status,200);await approvalGate(otherSemesterApplicant,4,'blocked');
+    result=await req('/state','GET',undefined,student.cookie);assert.equal(result.status,200);assert.equal(result.body.requiresApproval,false);assert.equal(result.body.selectedSemester,3);assert.equal(result.body.semesterLocked,true);assert.deepEqual(result.body.semesters.map(s=>s.id),[3]);assert.equal(result.body.notes[0].id,notes[3]);
     for(const user of[student,pendingTeacher]){
       result=await req('/state?semester=4','GET',undefined,user.cookie);assert.equal(result.status,403);assert.match(result.body.error,/assigned semester/);assert.ok(!JSON.stringify(result.body).includes('Study material'));
       assert.equal((await req('/teaching/state?semester=4','GET',undefined,user.cookie)).status,403);
       for(const type of['notes','notices'])for(const action of['preview','download'])assert.equal((await req(`/${type}/${type==='notes'?notes[4]:notices[4]}/${action}`,'GET',undefined,user.cookie)).status,403);
     }
     assert.equal((await req('/teaching/workspace?semester=4','GET',undefined,student.cookie)).status,403);
-    for(const userCookie of[undefined,admin,teacher.cookie]){
+    for(const userCookie of[admin,teacher.cookie]){
       result=await req('/state?semester=4','GET',undefined,userCookie);assert.equal(result.status,200);assert.equal(result.body.selectedSemester,4);assert.equal(result.body.semesterLocked,false);assert.equal(result.body.notes[0].id,notes[4]);
       assert.equal((await req('/teaching/state?semester=4','GET',undefined,userCookie)).status,200);
       for(const type of['notes','notices'])for(const action of['preview','download'])assert.equal((await req(`/${type}/${type==='notes'?notes[4]:notices[4]}/${action}`,'GET',undefined,userCookie)).status,200);
     }
+    result=await req('/state?semester=4');assert.equal(result.status,200);assert.equal(result.body.requiresLogin,true);assert.equal(result.body.user,null);for(const key of['subjects','notes','notices','threads','events'])assert.deepEqual(result.body[key],[]);assert.deepEqual(result.body.routines,{class:null,exam:null});assert.equal(result.body.teaching,null);assert.ok(!JSON.stringify(result.body).includes('Study material'));
+    assert.equal((await req('/teaching/state?semester=4')).status,401);
+    for(const selected of[3,4])for(const type of['notes','notices'])for(const action of['preview','download'])assert.equal((await req(`/${type}/${type==='notes'?notes[selected]:notices[selected]}/${action}`)).status,401);
+    result=await req('/state','GET',undefined,teacher.cookie);assert.deepEqual(result.body.semesters.map(row=>row.id),[3,4]);assert.ok(result.body.teacherSemesterOptions.some(row=>row.id===5));
+    assert.equal((await req('/state?semester=5','GET',undefined,teacher.cookie)).status,403);assert.equal((await req('/teaching/workspace?semester=5','GET',undefined,teacher.cookie)).status,403);
     for(const type of['notes','notices'])for(const action of['preview','download'])assert.equal((await req(`/${type}/${type==='notes'?notes[3]:notices[3]}/${action}`,'GET',undefined,student.cookie)).status,200);
     assert.equal((await req('/notes','POST',{subjectId:subjects[4],title:'Forged subject',content:'Must not publish',semester:3,role:'teacher'},student.cookie)).status,403);
     result=await req('/notes','POST',{subjectId:subjects[3],title:'Student own note',content:'Own semester note'},student.cookie);assert.equal(result.status,201);const ownNote=result.body.id;
@@ -73,6 +90,14 @@ test('signed students stay in their assigned semester across state, timetable, n
     result=await req('/my-notes','GET',undefined,student.cookie);assert.equal(result.status,200);assert.ok(!result.body.some(note=>note.id===ownNote));
     for(const selected of[3,4])assert.equal((await req('/notes','POST',{subjectId:subjects[selected],title:'Teacher '+selected,content:'Teaching material'},teacher.cookie)).status,201);
     result=await req('/my-notes','GET',undefined,teacher.cookie);assert.deepEqual(new Set(result.body.map(note=>note.semester)),new Set([3,4]));
+    assert.equal((await req('/teacher/semesters','PUT',{semesters:[4]},teacher.cookie)).status,200);
+    result=await req('/state','GET',undefined,teacher.cookie);assert.equal(result.body.selectedSemester,4);assert.deepEqual(result.body.semesters.map(row=>row.id),[4]);
+    assert.equal((await req('/state?semester=3','GET',undefined,teacher.cookie)).status,403);assert.equal((await req('/notes/'+notes[3]+'/download','GET',undefined,teacher.cookie)).status,403);
+    assert.equal((await req('/notes','POST',{subjectId:subjects[3],title:'Outside teaching scope',content:'Must not publish'},teacher.cookie)).status,403);
+    result=await req('/my-notes','GET',undefined,teacher.cookie);assert.ok(result.body.every(note=>note.semester===4));result=await req('/teacher/dashboard','GET',undefined,teacher.cookie);assert.ok(result.body.notes.every(note=>note.semester===4));assert.equal(result.body.counts.notes,1);
+    assert.equal((await req('/teaching/slots','POST',{semester:3,teacherId:teacher.id,subjectId:subjects[3],weekday:1,start:'09:00',end:'10:00',room:'Scope test',revision:0},admin)).status,201);
+    result=await req('/state?semester=3','GET',undefined,teacher.cookie);assert.equal(result.status,200);assert.deepEqual(result.body.semesters.map(row=>row.id),[3,4]);assert.equal(result.body.semesters.find(row=>row.id===3).assigned,true,'Active assignments remain in scope after removing a profile choice');assert.equal(result.body.semesters.find(row=>row.id===3).selected,false);
+    assert.equal((await req('/notes/'+notes[3]+'/download','GET',undefined,teacher.cookie)).status,200);
     const delayed=await f.delayedNote(student.cookie,subjects[3]);
     try{assert.equal((await req('/users/'+student.id,'PATCH',{semester:4},admin)).status,200);result=await delayed.finish();assert.equal(result.status,403,'Reassignment during multipart body receipt must use fresh stored membership');}catch(error){delayed.cancel();throw error;}
     result=await req('/state','GET',undefined,student.cookie);assert.equal(result.status,200);assert.equal(result.body.selectedSemester,4);assert.equal(result.body.user.semester,4);assert.ok(result.body.notes.every(note=>note.title!=='Delayed upload'));
@@ -81,5 +106,6 @@ test('signed students stay in their assigned semester across state, timetable, n
     result=await req('/my-notes','GET',undefined,student.cookie);assert.ok(result.body.some(note=>note.id===ownNote),'A previously owned note becomes visible only when its current semester matches the current membership');
     assert.equal((await req('/users/'+teacher.id,'PATCH',{role:'member'},admin)).status,200);
     assert.equal((await req('/state?semester=4','GET',undefined,teacher.cookie)).status,403,'A stale teacher cookie must not retain multi-semester access after demotion');
+    assert.equal((await req('/logout','POST',{},student.cookie)).status,200);result=await req('/state?semester=3','GET',undefined,student.cookie);assert.equal(result.body.requiresLogin,true);assert.deepEqual(result.body.notes,[]);assert.equal((await req('/notes/'+notes[3]+'/download','GET',undefined,student.cookie)).status,401,'Signing out cannot bypass the membership restriction');
   }finally{await f.close();}
 });

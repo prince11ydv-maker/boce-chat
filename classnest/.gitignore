@@ -15,3 +15,8 @@ PRIVATE-Firebase-Admin/
 *firebase-adminsdk*.json
 firebase-admin*.json
 *service-account*.json
+PRIVATE-Database-Backups/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*

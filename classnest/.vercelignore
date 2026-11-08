@@ -1,0 +1,10 @@
+data
+node_modules
+test
+scripts
+.env
+.env.*
+*.zip
+*.log
+*.md
+START-WEBSITE.cmd

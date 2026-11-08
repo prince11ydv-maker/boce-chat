@@ -1,0 +1,8 @@
+node_modules/
+public/vendor/pdfjs/
+data/
+.env
+.env.*
+.vercel/
+*.zip
+*.log

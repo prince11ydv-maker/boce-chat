@@ -1,0 +1,243 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.48.1.52935",
+      "templateHash": "16956697027466388547"
+    }
+  },
+  "parameters": {
+    "siteName": {
+      "type": "string",
+      "metadata": {
+        "description": "New globally unique app name. The deployment script rejects existing resource groups/names."
+      }
+    },
+    "sqlServerName": {
+      "type": "string"
+    },
+    "databaseName": {
+      "type": "string",
+      "defaultValue": "classnest"
+    },
+    "location": {
+      "type": "string"
+    },
+    "entraAdminObjectId": {
+      "type": "string"
+    },
+    "entraAdminLogin": {
+      "type": "string"
+    },
+    "tenantId": {
+      "type": "string"
+    },
+    "sqlAdminLogin": {
+      "type": "string",
+      "defaultValue": "classnest_bootstrap"
+    },
+    "appSqlUser": {
+      "type": "string",
+      "defaultValue": "classnest_runtime"
+    },
+    "sqlAdminPassword": {
+      "type": "securestring"
+    },
+    "appSqlPassword": {
+      "type": "securestring"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2024-04-01",
+      "name": "[format('{0}-free', parameters('siteName'))]",
+      "location": "[parameters('location')]",
+      "kind": "linux",
+      "sku": {
+        "name": "F1",
+        "tier": "Free",
+        "capacity": 1
+      },
+      "properties": {
+        "reserved": true,
+        "zoneRedundant": false
+      },
+      "tags": {
+        "app": "classnest",
+        "dataMode": "azure-sql-v1"
+      }
+    },
+    {
+      "type": "Microsoft.Sql/servers",
+      "apiVersion": "2025-01-01",
+      "name": "[parameters('sqlServerName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "version": "12.0",
+        "administratorLogin": "[parameters('sqlAdminLogin')]",
+        "administratorLoginPassword": "[parameters('sqlAdminPassword')]",
+        "minimalTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled",
+        "administrators": {
+          "administratorType": "ActiveDirectory",
+          "azureADOnlyAuthentication": false,
+          "login": "[parameters('entraAdminLogin')]",
+          "sid": "[parameters('entraAdminObjectId')]",
+          "tenantId": "[parameters('tenantId')]",
+          "principalType": "User"
+        }
+      },
+      "tags": {
+        "app": "classnest",
+        "dataMode": "azure-sql-v1"
+      }
+    },
+    {
+      "type": "Microsoft.Sql/servers/databases",
+      "apiVersion": "2025-01-01",
+      "name": "[format('{0}/{1}', parameters('sqlServerName'), parameters('databaseName'))]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "GP_S_Gen5",
+        "tier": "GeneralPurpose",
+        "family": "Gen5",
+        "capacity": 2
+      },
+      "properties": {
+        "createMode": "Default",
+        "useFreeLimit": true,
+        "freeLimitExhaustionBehavior": "AutoPause",
+        "maxSizeBytes": 34359738368,
+        "requestedBackupStorageRedundancy": "Local",
+        "zoneRedundant": false,
+        "readScale": "Disabled"
+      },
+      "tags": {
+        "app": "classnest",
+        "dataMode": "azure-sql-v1"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2024-04-01",
+      "name": "[parameters('siteName')]",
+      "location": "[parameters('location')]",
+      "kind": "app,linux",
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', format('{0}-free', parameters('siteName')))]",
+        "httpsOnly": true,
+        "clientAffinityEnabled": false,
+        "publicNetworkAccess": "Enabled",
+        "siteConfig": {
+          "linuxFxVersion": "NODE|24-lts",
+          "appCommandLine": "node server.js",
+          "alwaysOn": false,
+          "ftpsState": "Disabled",
+          "minTlsVersion": "1.2",
+          "scmMinTlsVersion": "1.2",
+          "remoteDebuggingEnabled": false,
+          "ipSecurityRestrictionsDefaultAction": "Deny",
+          "scmIpSecurityRestrictionsUseMain": false,
+          "scmIpSecurityRestrictionsDefaultAction": "Allow",
+          "appSettings": [
+            {
+              "name": "NODE_ENV",
+              "value": "production"
+            },
+            {
+              "name": "HOST",
+              "value": "0.0.0.0"
+            },
+            {
+              "name": "DATA_DIR",
+              "value": "/home/classnest-data"
+            },
+            {
+              "name": "DB_PROVIDER",
+              "value": "azure-sql"
+            },
+            {
+              "name": "SQL_SERVER",
+              "value": "[reference(resourceId('Microsoft.Sql/servers', parameters('sqlServerName')), '2025-01-01').fullyQualifiedDomainName]"
+            },
+            {
+              "name": "SQL_DATABASE",
+              "value": "[parameters('databaseName')]"
+            },
+            {
+              "name": "SQL_USER",
+              "value": "[parameters('appSqlUser')]"
+            },
+            {
+              "name": "SQL_PASSWORD",
+              "value": "[parameters('appSqlPassword')]"
+            },
+            {
+              "name": "WEBSITES_ENABLE_APP_SERVICE_STORAGE",
+              "value": "true"
+            },
+            {
+              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "tags": {
+        "app": "classnest",
+        "dataMode": "azure-sql-v1"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Sql/servers/databases', parameters('sqlServerName'), parameters('databaseName'))]",
+        "[resourceId('Microsoft.Web/serverfarms', format('{0}-free', parameters('siteName')))]",
+        "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+      "apiVersion": "2024-04-01",
+      "name": "[format('{0}/{1}', parameters('siteName'), 'scm')]",
+      "properties": {
+        "allow": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('siteName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Web/sites/basicPublishingCredentialsPolicies",
+      "apiVersion": "2024-04-01",
+      "name": "[format('{0}/{1}', parameters('siteName'), 'ftp')]",
+      "properties": {
+        "allow": false
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/sites', parameters('siteName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "siteId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Web/sites', parameters('siteName'))]"
+    },
+    "databaseId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Sql/servers/databases', parameters('sqlServerName'), parameters('databaseName'))]"
+    },
+    "sqlServerId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Sql/servers', parameters('sqlServerName'))]"
+    },
+    "expectedHostName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Web/sites', parameters('siteName')), '2024-04-01').defaultHostName]"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS teacher_slots(id TEXT PRIMARY KEY,semester INTEGER NOT NULL REFERENCES semesters(id),teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,weekday INTEGER NOT NULL CHECK(weekday BETWEEN 1 AND 7),start_minute INTEGER NOT NULL,end_minute INTEGER NOT NULL,room TEXT NOT NULL DEFAULT '',revision INTEGER NOT NULL,active INTEGER NOT NULL DEFAULT 1,updated INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS daily_routines(semester INTEGER NOT NULL REFERENCES semesters(id),class_date TEXT NOT NULL,title TEXT NOT NULL,rows_json TEXT NOT NULL,revision INTEGER NOT NULL,updated INTEGER NOT NULL,PRIMARY KEY(semester,class_date));
+CREATE TABLE IF NOT EXISTS class_occurrences(id TEXT PRIMARY KEY,source_key TEXT NOT NULL UNIQUE,source_type TEXT NOT NULL,source_id TEXT NOT NULL,source_revision INTEGER NOT NULL,semester INTEGER NOT NULL REFERENCES semesters(id),class_date TEXT NOT NULL,teacher_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,subject_id TEXT NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,start_minute INTEGER NOT NULL,end_minute INTEGER NOT NULL,starts_at INTEGER NOT NULL,ends_at INTEGER NOT NULL,room TEXT NOT NULL DEFAULT '',active INTEGER NOT NULL DEFAULT 1,response TEXT NOT NULL DEFAULT 'pending',eta TEXT NOT NULL DEFAULT '',reason TEXT NOT NULL DEFAULT '',revision INTEGER NOT NULL DEFAULT 1,updated INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS app_notifications(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,type TEXT NOT NULL,semester INTEGER NOT NULL REFERENCES semesters(id),title TEXT NOT NULL,body TEXT NOT NULL,url TEXT NOT NULL,reference TEXT NOT NULL,expires_at INTEGER NOT NULL,created INTEGER NOT NULL,read_at INTEGER);
+CREATE INDEX IF NOT EXISTS teacher_slots_scope ON teacher_slots(semester,active,weekday);
+CREATE INDEX IF NOT EXISTS teacher_slots_teacher ON teacher_slots(teacher_id,active);
+CREATE INDEX IF NOT EXISTS daily_routines_date ON daily_routines(class_date);
+CREATE INDEX IF NOT EXISTS occurrences_scope ON class_occurrences(semester,class_date,active);
+CREATE INDEX IF NOT EXISTS occurrences_teacher ON class_occurrences(teacher_id,active,starts_at);
+CREATE INDEX IF NOT EXISTS occurrences_due ON class_occurrences(active,response,starts_at);
+CREATE INDEX IF NOT EXISTS occurrences_source ON class_occurrences(source_type,source_id,starts_at);
+CREATE INDEX IF NOT EXISTS notifications_user ON app_notifications(user_id,created);
+CREATE INDEX IF NOT EXISTS notifications_reference ON app_notifications(user_id,type,reference);
+CREATE INDEX IF NOT EXISTS notifications_expiry ON app_notifications(expires_at);

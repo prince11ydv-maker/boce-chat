@@ -1,0 +1,60 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import net from 'node:net';
+const root=path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+test('shared classroom: permissions, CRUD, files, persistence, and public reading',async()=>{
+ const dir=mkdtempSync(path.join(tmpdir(),'classnest-test-'));
+ const free=net.createServer();await new Promise(r=>free.listen(0,'127.0.0.1',r));const port=free.address().port;await new Promise(r=>free.close(r));
+ const base=`http://127.0.0.1:${port}`;let child;
+ async function start(){child=spawn(process.execPath,['server.js'],{cwd:root,env:{...process.env,PORT:String(port),DATA_DIR:dir,NODE_ENV:'test',WEBSITE_SITE_NAME:''},stdio:['ignore','pipe','pipe']});let log='';child.stderr.on('data',d=>log+=d);await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Server did not start '+log)),10000);child.stdout.on('data',d=>{if(String(d).includes('running')){clearTimeout(timer);resolve();}});child.on('exit',code=>{clearTimeout(timer);reject(new Error('Server exited '+code+' '+log));});});}
+ async function stop(){if(child&&!child.killed){const ended=new Promise(r=>child.once('exit',r));child.kill();await ended;}}
+ async function request(route,{method='GET',body,cookie='',verify=true,origin}={}){const headers={};if(verify)headers['X-Classnest-Request']='1';if(cookie)headers.Cookie=cookie;if(origin)headers.Origin=origin;if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';const res=await fetch(base+route,{method,headers,body:body instanceof FormData?body:body?JSON.stringify(body):undefined});const result=res.headers.get('content-type')?.includes('json')?await res.json():await res.text();return {status:res.status,body:result,cookie:res.headers.get('set-cookie')?.split(';')[0],headers:res.headers};}
+ try{await start();
+ let r=await request('/api/state');assert.equal(r.body.needsSetup,true);assert.equal(r.body.settings.semester,3);
+ r=await request('/api/subjects',{method:'POST',body:{name:'Intruder',semester:3}});assert.equal(r.status,403);
+ r=await request('/api/setup',{method:'POST',body:{name:'Class Owner',email:'owner@example.com',password:'correct horse battery staple'}});assert.equal(r.status,201);const owner=r.cookie;assert.ok(owner);assert.ok(owner.startsWith('classnest_session='));
+ r=await request('/api/setup',{method:'POST',body:{}});assert.equal(r.status,409);
+ r=await request('/api/subjects',{method:'POST',cookie:owner,verify:false,body:{name:'Forged'}});assert.equal(r.status,403);
+ r=await request('/api/subjects',{method:'POST',cookie:owner,origin:'https://attacker.example',body:{name:'Forged'}});assert.equal(r.status,403);
+ r=await request('/api/register',{method:'POST',body:{name:'Student One',email:'student@example.com',password:'another secure password',semester:3}});assert.equal(r.status,202);assert.equal(r.cookie,undefined);
+ r=await request('/api/login',{method:'POST',body:{email:'student@example.com',password:'another secure password'}});assert.equal(r.status,200);const student=r.cookie,studentId=r.body.id;assert.equal(r.body.role,'pending');
+ r=await request('/api/threads',{method:'POST',cookie:student,body:{title:'Pending post',content:'Not allowed yet',semester:3}});assert.equal(r.status,403);
+ r=await request('/api/users/'+studentId,{method:'PATCH',cookie:owner,body:{role:'member'}});assert.equal(r.status,200);
+ r=await request('/api/subjects',{method:'POST',cookie:owner,body:{name:'Test Subject',code:'TEST 201',description:'A real folder',semester:3,color:'sage'}});assert.equal(r.status,201);const subject=r.body.id;
+ r=await request('/api/subjects',{method:'POST',cookie:student,body:{name:'No privilege',semester:3}});assert.equal(r.status,403);
+ const upload=new FormData();upload.set('subjectId',subject);upload.set('title','My revision note');upload.set('content','A useful explanation.');upload.set('file',new Blob(['%PDF-1.4\nTest document'],{type:'application/pdf'}),'revision.pdf');
+ r=await request('/api/notes',{method:'POST',cookie:student,body:upload});assert.equal(r.status,201);const note=r.body.id;
+ r=await request('/api/notes/'+note+'/download');assert.equal(r.status,200);assert.match(r.body,/%PDF/);assert.match(r.headers.get('content-disposition'),/attachment/);
+ r=await request('/api/state');assert.equal(r.body.notes[0].title,'My revision note');assert.equal(r.body.subjects[0].noteCount,1);assert.ok(!('filename' in r.body.notes[0]));assert.equal(r.body.user,null);
+ const invalid=new FormData();invalid.set('subjectId',subject);invalid.set('title','Executable');invalid.set('file',new Blob(['bad']),'bad.html');r=await request('/api/notes',{method:'POST',cookie:student,body:invalid});assert.equal(r.status,400);
+ r=await request('/api/notices',{method:'POST',cookie:owner,body:{title:'Exam update',content:'Bring your calculator.',category:'Exam',pinned:true,semester:3}});assert.equal(r.status,201);const notice=r.body.id;
+ r=await request('/api/notices',{method:'POST',cookie:student,body:{}});assert.equal(r.status,403);
+ r=await request('/api/threads',{method:'POST',cookie:student,body:{title:'How does this work?',content:'Can we study together?',semester:3}});assert.equal(r.status,201);const thread=r.body.id;
+ r=await request('/api/threads/'+thread+'/replies',{method:'POST',cookie:owner,body:{content:'Absolutely, after class.'}});assert.equal(r.status,201);
+ r=await request('/api/threads/'+thread+'/replies',{cookie:student});assert.equal(r.body.length,1);
+ r=await request('/api/events',{method:'POST',cookie:owner,body:{semester:3,title:'Class test',date:'2026-12-01T10:00',kind:'Exam',location:'Room 1'}});assert.equal(r.status,201);const event=r.body.id;
+ r=await request('/api/semesters',{method:'POST',cookie:owner,body:{id:9,name:'Semester 9'}});assert.equal(r.status,201);
+ r=await request('/api/settings',{method:'PATCH',cookie:owner,body:{name:'Classnest PU',institution:'Pokhara University',semester:4}});assert.equal(r.status,200);
+ r=await request('/api/state');assert.equal(r.body.settings.semester,4);assert.equal(r.body.notes.length,0);
+ r=await request('/api/backup',{cookie:owner});assert.equal(r.status,200);assert.match(r.body,/SQLite format 3/);
+ r=await request('/api/backup',{cookie:student});assert.equal(r.status,403);
+ await stop();await start();r=await request('/api/state?semester=3',{cookie:owner});assert.equal(r.body.notes.length,1);assert.equal(r.body.user.role,'admin');assert.equal(r.body.notices.length,1);assert.equal(r.body.events.length,1);
+ r=await request('/api/users/'+studentId,{method:'PATCH',cookie:owner,body:{role:'blocked'}});assert.equal(r.status,200);
+ r=await request('/api/notes/'+note,{method:'DELETE',cookie:student});assert.equal(r.status,403);
+ r=await request('/api/subjects/'+subject,{method:'DELETE',cookie:owner});assert.equal(r.status,200);
+ r=await request('/api/notes/'+note+'/download');assert.equal(r.status,404);
+ r=await request('/api/threads/'+thread,{method:'DELETE',cookie:owner});assert.equal(r.status,200);r=await request('/api/threads/'+thread+'/replies',{cookie:owner});assert.equal(r.status,404);
+ r=await request('/api/notices/'+notice,{method:'DELETE',cookie:owner});assert.equal(r.status,200);
+ r=await request('/api/events/'+event,{method:'DELETE',cookie:owner});assert.equal(r.status,200);
+ r=await request('/api/password',{method:'POST',cookie:owner,body:{current:'correct horse battery staple',password:'updated owner password'}});assert.equal(r.status,200);const freshOwner=r.cookie;
+ r=await request('/api/users',{cookie:owner});assert.equal(r.status,403);
+ r=await request('/api/logout',{method:'POST',cookie:freshOwner,body:{}});assert.equal(r.status,200);
+ r=await request('/api/login',{method:'POST',body:{email:'owner@example.com',password:'updated owner password'}});assert.equal(r.status,200);
+ r=await request('/');assert.equal(r.status,200);assert.match(r.body,/Classnest/);assert.ok(r.headers.get('content-security-policy'));
+ }finally{await stop();rmSync(dir,{recursive:true,force:true});}
+});

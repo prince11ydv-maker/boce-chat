@@ -1,0 +1,29 @@
+{
+  "name": "classnest-pu",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A shared classroom hub for Pokhara University School of Engineering",
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "postinstall": "node build-assets.mjs",
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@azure/identity": "^4.14.1",
+    "@supabase/supabase-js": "2.119.0",
+    "@vercel/functions": "3.10.6",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "image-size": "2.1.0",
+    "mssql": "^12.7.14",
+    "multer": "^2.0.2",
+    "nodemailer": "10.3.1",
+    "pdfjs-dist": "6.5.438",
+    "pg": "8.23.1"
+  }
+}

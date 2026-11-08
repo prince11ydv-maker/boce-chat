@@ -1,0 +1,144 @@
+# Classnest deployment
+
+Public website: **https://pusoe.vercel.app**. The previous address, https://classnest-pu.vercel.app, redirects to it with paths, queries, and email-link fragments preserved.
+
+The notice attachment and direct-notification update is READY in production. The full automated suite, database migration/security checks, local photo/PDF and student-notification browser checks, and production source/content/access checks passed. Earlier feature releases remain documented as historical evidence.
+
+## Notice attachments and direct alerts · 8 November 2026
+
+- Target: production; Vercel status: READY.
+- Hosting: Vercel Hobby, Express on Node.js 24, Mumbai; Supabase Free in Mumbai.
+- Deployment: `dpl_8eskU4SzGMBLqsq9AWqFAfJ2Hdc2`.
+- Unique deployment hostname: `classnest-lbi4zieya-prince11ydv-4175.vercel.app`; canonical website: https://pusoe.vercel.app.
+- Source SHA-256: `3dc126d67b5fbc443c8ba824a7e880e7425d04acab4a0e0fc1753a4a21b5d163` across 45 deployment source files. Generated PDF.js assets, docs, and archives are separate.
+
+Administrators can add one PDF or photo to a notice, with optional text when an attachment is present. The notice title remains required. Each file is limited to 20 MiB, sharing the existing 700 MiB workspace attachment allowance with notes. Allowed formats are PDF, JPG/JPEG, PNG, WebP, GIF, BMP, AVIF, HEIC/HEIF, and TIF/TIFF. Notice cards expose View and Download; direct `#notices/ID` links focus the matching card and offer Back to all notices.
+
+Photo validation checks recognized type/container headers and dimensions with pinned `image-size` 2.1.0. Originals are bounded to 100 megapixels and 30,000 pixels per side. Browser-native previews use the existing 16-megapixel/12,000-pixel-per-side bounds. HEIC/HEIF/TIFF and oversized images retain a download fallback. PDF previews retain the bounded, locally hosted PDF.js 6.5.438 viewer. Header validation is not a full image decode or antivirus guarantee. The dependency audit reported zero known vulnerabilities at this check.
+
+Publishing creates direct notice account alerts in the same transaction as the notice/attachment metadata. The sender is excluded. Approved students receive their current semester's alerts; approved teachers use their primary semester or actual assignments, while profile choices alone do not add access. Email uses the existing Notices preference, verified address, approval, and current scope. The old separate notice-email enqueue is removed to avoid duplicate messages. Deleted or moved notices, revoked roles, and changed consent are checked again before queued mail delivery. Notice links retain the semester context and open the specific card.
+
+The owner-run `classnest_notice_attachments` migration from `schema/notice-attachments-postgres.sql` is applied. It adds private `notice_attachments` and `notice_uploads` tables and widens the app-notification type constraint. Both new tables have RLS enabled, server-only CRUD policies, and zero grants to anon, authenticated, or PUBLIC. The Supabase security advisor returned no findings. The pre-deployment database check found three accounts, one subject, no notes or notices, and one routine; no production content was replaced. Notice attachment metadata is the fifteenth durable portable-backup table; upload-purpose markers are transient and excluded. Legacy exports gain empty optional collections. Restore validation rejects note/notice filename aliases. Cleanup and attachment deletion preserve any file still referenced by either type of content.
+
+The existing private bucket, upload endpoint, nine-column core upload ticket, SMTP sender, and worker are reused. Notice-purpose markers bind tickets to their intended endpoint. On completed notice uploads, the core ticket's expiry is held beyond the legacy note-only cleanup path while the marker retains its original expiry. The new worker uses that expiry for transaction-serialized cleanup, removing staged data while retaining referenced final files. No credential, service, paid plan, or production test notice is introduced by this update.
+
+All 88 automated tests passed, with zero failures, including metadata, notification, file-validation, HTTP, and fifteen-table backup checks. Final syntax checks passed for the server, app, teaching UI, and preview scripts, and `npm audit --omit=dev` reported zero known vulnerabilities. The earlier nine preview checks and six new notice-preview VM checks passed. Local browser checks published a PNG photo and a PDF with empty notice details, rendered the photo inside Classnest, and rendered the PDF through the self-hosted PDF.js viewer. The student's notification list showed the notice alerts; **Open update** navigated to the exact `#notices/ID`, focused only that notice, and allowed its photo to open. No production test notice was published and no real production notice email delivery is claimed; notification mail testing uses fake transport/local fixtures.
+
+Production homepage and state requests returned HTTP 200. Served `app.js`, `style.css`, `routine-html-import.js`, `note-preview.js`, and `teaching-ui.js` byte hashes matched the tested source. The public-content fingerprint matched the pre-deployment baseline, and the old hostname retained its 308 redirect. Anonymous notice creation and notice upload-ticket requests returned 403; a missing preview returned 404; a valid unauthenticated JSON worker request returned 401. Live browser checks showed the updated notice-board description and the real empty notice list. Authenticated notice posting and student alert navigation were exercised locally, without creating production QA accounts/posts or sending production notice emails.
+
+The automatic worker returned HTTP 200 at 2026-11-08 01:27 UTC (07:12 Nepal time), with `{"accepted":0,"checked":3,"reminders":{"reminded":0,"checked":0}}` and no error. This exercised the new cleanup queries with the restricted runtime account; no class reminder was due. Production retained three users, one approved teacher, one subject, no notes or notices, and one routine. The two new notice tables remained empty after read-only production verification.
+
+## Earlier verified teacher dashboard release · 8 November 2026
+
+- Target: production; Vercel status: READY.
+- Hosting: Vercel Hobby, Express on Node.js 24, Mumbai; Supabase Free in Mumbai.
+- Deployment: `dpl_4phwNZj8RhcNYbok9oxGCEm3PWpE`.
+- Unique deployment hostname: `classnest-flvlwea4h-prince11ydv-4175.vercel.app`; canonical website: https://pusoe.vercel.app.
+- Source SHA-256: `6e11db058354aa7fe650d001245428372159621dbe7989342074d7bf7b7615e1` across 41 deployment source files. Generated PDF.js assets, docs, and archives are separate.
+
+This update adds a teacher-focused overview and a saved set of teaching-semester preferences. The overview provides today's class count in Nepal time, unanswered classes, upcoming classes within 48 hours, weekly assignments, and the teacher's own notes. Its All semesters or individual-semester filter does not change global membership. Class scope combines selected and actually assigned semesters, so real administrator-assigned classes remain included even when their semester is not selected in the profile. The notes panel lists only the teacher's own contributions, including other semesters, with at most 200 recent records; selected-semester text is bounded separately to avoid a large cross-semester response.
+
+Choosing one to thirty existing semesters is a profile preference: it does not approve an account, assign classes, change the primary membership semester, or grant discussion/private-notification access. Teacher signup offers multiple semester checkboxes. Approved teachers and pending teacher applicants may save their own choices; only approved teachers may open the dashboard. Existing accounts without saved choices fall back to their primary semester.
+
+All 71 automated tests passed, including six new dashboard suites covering pending-account limits, fresh approval, ownership/privacy, semester filtering, content bounds, and legacy fallback. Local browser checks saved Semesters 3 and 4 and retained them after reload. All my semesters showed two classes today, three pending replies, and two owned notes; filtering Semester 4 showed one class and one note. Cross-semester note editing loaded the correct existing content, and Share notes selected the intended semester's subject. Dashboard cards fit the main column without widening the page.
+
+The owner-run `classnest_teacher_semesters` migration from `schema/teacher-semesters-postgres.sql` is applied. Its table has RLS enabled, zero public grants, and no reported security-advisor findings. Portable exports include the fourteenth durable table; round-trip tests and legacy nine-, ten-, and thirteen-table defaults passed. Missing optional collections normalize to empty arrays. A real teacher joined while this update was being prepared: production then contained three users, one approved teacher, and the original routine. No production QA account or test publication was created or modified. The existing teacher retains the primary-semester fallback until choosing a profile.
+
+The deployment reached READY. Live app script, teaching UI, stylesheet, and HTML importer returned HTTP 200 with exact source matches. Public state returned 200 with email enabled and a three-minute reminder setting. The old hostname still returned its 308 redirect. The public-content fingerprint matched the pre-deployment value: the weekly routine was preserved and the exam routine remained empty. Anonymous dashboard reads returned 403 and profile updates returned 401. The profile table retained RLS and zero public grants, and the security advisor returned no findings. The live browser selected Semesters 3 and 4 simultaneously in teacher signup without submitting the form or creating an account. Private teacher dashboard operations were verified locally; production checks did not sign in as or alter the real teacher.
+
+## Earlier teacher/student release · 7 November 2026
+
+- Target: production; Vercel status: READY.
+- Hosting: Vercel Hobby, Express on Node.js 24, Mumbai; Supabase Free in Mumbai.
+- Deployment: `dpl_84unYTDgGaXhgmq77Y9dEqj8LN1g`.
+- Source SHA-256: `fa206994512ec6f09febc2d4849c07ec84480ed3f4f58aba9871466dced6e105` across 38 deployment source files. Generated PDF.js assets, docs, and source archives are separate.
+
+The release adds Student, Teacher, and Admin sign-in portals while preserving existing accounts. Teacher signup is a request: only an administrator can approve the teacher role. Approved students and teachers can publish notes, authors can edit their own title/subject/text, and administrators can edit any note; these edits retain the attachment. The authorized contribution panel appears under My notes or Teaching & my notes.
+
+A daily timetable appears before the existing weekly routine. Administrators publish dated subject/teacher/time/room rows, prefill from explicit weekly teacher assignments, or publish an empty day to override weekly classes. Teacher assignments use 24-hour Nepal times. Daily pages support the past seven days through the next thirty; daily records and class occurrences have 35-day retention. Existing weekly/exam tables retain their editors and HTML import. The homepage also shows a seconds-updating Asia/Kathmandu clock above its Nepal date, and Help has sixteen FAQs.
+
+The teacher reminder target is three minutes before class. A durable occurrence creates at most one account reminder; minute-by-minute background checks and email transport can introduce delivery delay. Teachers reply Coming with 1–5, 5–10, or 10+ minutes, or Not coming with a required reason. Replies open 24 hours before class and close when it ends. The public daily board redacts absence reasons; authorized teacher/admin views and private class notifications can include them. Account alerts refresh around every 60 seconds while the website is open. No operating-system push service is configured.
+
+Approved students receive account alerts for their assigned semester. Teachers receive relevant class updates and their own reminders. Email requires a verified address and explicit category consent, with a separate teacherReminders choice for approved teachers. Student email delivery rechecks the account semester instead of trusting a browsing selector. Notification opens and email links retain semester/date context.
+
+The additive owner-run migrations `classnest_teacher_accounts` (`schema/teacher-accounts-postgres.sql`) and `classnest_teaching_workflows` (`schema/teaching-postgres.sql`) are applied. The four new tables have RLS and server-only CRUD policies, zero public grants, and no reported security-advisor findings. The original two accounts, one subject, and one routine were preserved through migration. No real teacher account existed at migration time: the administrator must approve legitimate teacher requests and assign subjects/times. The PDF routine grid does not name account IDs, so no identities, emails, or teaching mappings were guessed.
+
+Portable-v1 backups now include thirteen durable tables, adding teacher_slots, daily_routines, and class_occurrences. App-notification inboxes, sessions, email tokens/preferences/outbox content, and secrets are excluded. Older nine-/ten-table exports remain accepted; old user account types normalize to student, or teacher for an existing teacher role. The new teacher/daily schema is implemented for SQLite/PostgreSQL only; retaining the old Azure adapter does not establish Azure SQL support for this workflow.
+
+All 65 automated tests passed. Local browser checks passed teacher approval, weekly assignment, daily publication, Coming with 5–10 minutes, Not coming with a reason, teacher note posting/editing, five student alerts, and an alert open that moved browsing from Semester 4 to Semester 3. The isolated worker returned HTTP 200 with one reminder while real email was disabled. New email flows were tested with fake transport; prior real SMTP evidence below is historical.
+
+Production frontend files matched the tested source, and public class content was preserved. The live browser verified a ticking Nepal clock above the date, daily timetable before the weekly routine, and working Forgot password entry points in the new sign-in panels. The existing delivery job 1 is active on `* * * * *`. Its automatic run at 2026-11-07 19:16 UTC (8 November, 01:01 Nepal time) returned HTTP 200 with `{"accepted":0,"checked":3,"reminders":{"reminded":0,"checked":0}}`. No reminder was due in that run. The security advisor returned no findings, and all four teaching tables retained RLS with zero public grants. There were no real teacher accounts in production at verification, so no new real teacher-reminder inbox delivery is claimed.
+
+## Earlier verified HTML-import release
+
+- Target: production; Vercel status: READY.
+- Hosting: Vercel Hobby, Express on Node.js 24, Mumbai region.
+- Database and attachments: Supabase Free in Mumbai.
+- Deployment: `dpl_AqQfiuwJJgYXhEcCLWiDcQ2cdXzG`.
+- Source SHA-256: `8f51edb656628c48afb6b70a13d0bc21ceb823632e0675d8b674e30578e27472` (the 33 deployed source files; generated PDF.js assets, deployment notes, and source archives are separate).
+
+## HTML table import · 7 November 2026
+
+Both routine editors now offer **Import HTML table** above the grid. Paste code, select its table and header option, preview the converted grid, then choose **Use this table in draft**. The title stays unchanged. Students see the new table only after **Publish routine**. Multiple thead rows join into column headings, row/column spans expand by repeating their text with a warning, and short rows receive empty cells. Unsupported formatting is discarded. Invalid or oversized input leaves the existing editable draft intact. Changing the source, selected table, or heading option invalidates the old preview.
+
+This is a frontend-only release: no schema, environment, credential, database, attachment, or service changes. All 48 automated tests passed. The separate real-browser harness passed 22 conversion and safety checks, including Unicode byte limits, merged/overlapping spans, row groups, nested/multiple tables, literal HTML-like text, and zero script execution/resource requests. An administrator imported, edited, and published both routine kinds in the isolated local workspace. A public API read before Publish confirmed that applying a preview had not published the draft; subsequent reads confirmed both saved grids and their revisions.
+
+Production reached READY. The homepage, new importer, app script, stylesheet, and state endpoint returned 200; the three frontend file hashes matched local source. Email remained available. The previous hostname retained its 308 redirect with query preservation. Public subject/note/notice/routine content matched the pre-deployment fingerprint, including the user's published class routine and empty exam routine. No production test publication was made. The signed-out production browser verified the updated routine FAQ; authenticated publication was tested locally. The browser viewport override did not apply, so this release adds no new mobile viewport verification. Prior mobile and PDF verification below belongs to the previous release.
+
+## Earlier routine and preview update
+
+The previous verified build was `dpl_BWqHSQDjkAd8FvRyZzRNPK2inmEU`, with source SHA-256 `af0cb8b90edb6fdf886aba37280c55eef33b038255d3a6a0f62d52ef41efe80d` across 32 source files. The checks below describe that release.
+
+The new homepage replaces the introductory banner with semester-specific weekly class and exam routine sections. The exam section contains no supplied entries and remains empty until an administrator publishes it. Administrators edit either table on the homepage or from Manage workspace, with add/remove row and column controls, clear/publish actions, and conflict-safe revision checks. Limits are 12 columns, 40 rows, 160 characters per cell, 80 characters per heading/title, and 100 KiB serialized content.
+
+Notes gain a visible View action and in-app PDF/image/text/Markdown previews while preserving Download. PDF pages use locally served, locked PDF.js assets with page, zoom, and page-text controls. Office formats use an explicit download fallback. File bytes stay on the app's same-origin preview path; no external document viewer, iframe, or PDF plugin is used. Preview resources are canceled on dialog close/replacement.
+
+The owner-run `classnest_routine_tables` migration from `schema/routines-postgres.sql` is applied. It adds the RLS-protected server-only routines table; checks found zero public grants and no security-advisor findings. SQLite creates its table automatically. Portable-v1 backups include routine records and still accept legacy exports without them. The source build uses `build-assets.mjs` during npm installation to reproduce 194 PDF.js public assets (approximately 4.21 MB) from the lockfile.
+
+All 48 automated tests and nine focused preview checks passed. npm audit reported zero known vulnerabilities at release time. In the local browser, an administrator added a row and column without losing typed cell/header values and published the populated table to the homepage. At 390 pixels, the routine table scrolled within its region without overflowing the page, and the exam section remained blank.
+
+The actual user's 106073-byte PDF rendered locally and on the deployed site, showing page 1 of 1; the local Read page text check included Calculus. The deployed `/vendor/pdfjs/` main/worker modules returned 200 with JavaScript content types. `/api/state` returned 200 with empty class/exam routines initially. Live API tests rejected an anonymous routine PUT (403), accepted a temporary administrator's empty-row routine (200, public revision 1), and rejected a stale PUT (409). The PDF preview returned 200 application/pdf with inline disposition, nosniff, and sandbox CSP, and its byte hash matched the download. Temporary empty-row routine/session records were removed; both routine sections remain empty until the administrator publishes real entries, and all existing user notes were preserved.
+
+## Earlier semester membership and help update
+
+The earlier verified semester release was `dpl_DayPZPExmocknLf1DhrGJaSkvu22`, with source SHA-256 `17eb21b788dcce84dc3701e4082a21fa97d5c8c9de66cd88948255e8cc7deaf2` across 27 deployed source files. The following checks describe that release.
+
+Registration starts with a required semester selection. Approved students can read and participate only in discussions belonging to their recorded account semester. Administrators can moderate all semesters and update assignments from Manage workspace. Notes, notices, and schedules remain public across semesters. The update also adds account semester details, ten accessible FAQs, and a responsive copyright/contact footer for Prince Kumar Yadav.
+
+All 45 automated tests passed. Separate tests against the production URL registered two temporary students in different semesters, verified approval and sign-in, created a discussion, denied other-semester reads/replies/forged creation, and checked that administrator reassignment immediately changed access using the same existing session. Anonymous discussion access was denied. Public library reads in Semesters 3 and 4 succeeded, and the existing public PDF downloaded successfully with its expected 106073 bytes. Temporary accounts, sessions, discussions, and replies were removed.
+
+The owner-run classnest_member_semesters migration added the nullable foreign-key column and index after a compatibility deployment qualified joined semester queries and made user inserts explicit. Existing accounts were backfilled to Semester 3, and the null-only backfill ran again after the final deployment. Existing passwords, active sessions, and the user's newly added notes/notices were preserved. The post-test database contained two original users, two sessions, two subjects, one note, one notice, and no temporary threads/replies; no account was unassigned. Supabase's security advisor reported no findings.
+
+Browser checks verified semester-first registration, registration-to-FAQ navigation, working FAQ expansion, the published FAQ/contact page, and the light mobile footer at 390 pixels. The production state endpoint returned 200 with email enabled. The source archive includes the new migrations and semester-access regression test, while excluding databases, uploads, and secrets.
+
+## Earlier appearance and shorter address update
+
+The update adds Light, Dark, and System appearance choices. System follows the device theme, including changes while the page is open. The selected mode is saved per browser and synchronized across same-origin tabs. No account is required.
+
+The primary origin and email worker target are https://pusoe.vercel.app. Vercel persists a 308 redirect from the old hostname; HTTP checks verified path and query preservation, and a browser check of an old synthetic invalid reset fragment opened the new site's reset dialog without submitting it. Accounts, passwords, and shared class data use the same database. Users sign in once on the new hostname because cookies are scoped by hostname; saved notes and appearance preferences remain local to each website address.
+
+The new homepage, /theme.js, and /api/state returned HTTP 200 with email enabled. API checks reached the new-origin verification and login routes with expected invalid-input responses (400 and 401), denied an unauthenticated administrator mutation (403), and blocked a cross-site Origin (403). Browser checks verified Light persistence after reload, the System option, desktop Light/Dark views, and the dark layout and modal at 390 pixels. JavaScript syntax checks and six focused appearance behavior checks passed. The previous full suite of 43 tests passed before these UI/environment changes and was not rerun for this update.
+
+The classnest_email_worker_domain migration updated existing job 1 to the new worker URL while retaining its five-minute schedule and Vault secret. An authenticated pg_net request returned HTTP 200 with {"accepted":0,"checked":3}, no timeout, and no error; the delivery queue was empty. This verifies the new endpoint directly; the earlier automatic-run evidence below belongs to the previous hostname.
+
+## Earlier email release · 6 November 2026
+
+Email build `dpl_88FhVRGKmmFKvafuv75mWf6NpceN` deployed password recovery, mailbox verification, notification preferences, and unsubscribe. Its canonical `/api/state` returned HTTP 200 with `emailAvailable: true`; the browser's **Sign in → Forgot password?** form was verified. All 43 automated tests passed for that release.
+
+Recovery links expire after 30 minutes and are used once. Approved, verified members/admins receive only the notification categories and semester they choose under **Account → Email preferences**. All subscriptions default off. Brevo Free allows 300 emails per day; app ceilings are 280 total attempts and 180 notification attempts per UTC day. Token-bearing outbox payloads are encrypted, and delivery occurs after database commit.
+
+The verified Brevo sender accepted a real SMTP test confirmed in the owner's Gmail inbox. Further production QA delivered real password-reset and class-notification messages to Gmail's inbox. Verification mail reached Spam; check that folder when waiting for a verification link. Reset requests returned the same generic HTTP 202 for known and unknown addresses. A temporary QA verification token succeeded once (200), failed on replay (400), and saved verified preferences.
+
+The email migration and `pg_cron`/`pg_net` setup are applied. The active `classnest-email-delivery` job runs on `*/5 * * * *` and references its bearer secret in Supabase Vault. A direct authenticated request to the live worker returned HTTP 200 with `{"accepted":0,"checked":3}`; an unauthenticated request returned 401. The automatic run at 2026-11-06 01:10:00 UTC succeeded with the same HTTP 200 response, no timeout, and no error. The Supabase security advisor reported no findings after the email tables and scheduler extensions were applied. See [EMAIL-SETUP.md](EMAIL-SETUP.md).
+
+Existing passwords and sessions were preserved. The temporary QA user, session, and notice were removed; the delivery queue is empty. The remaining two users and one session match the original baseline. There were no notes before the email QA; this release does not establish that an earlier migrated note remains present.
+
+## First release and migration history
+
+The earlier class-hub deployment was `dpl_FiAxk7ANSiPhjgDbuTtwj1u6WQxc`, with SHA-256 `4828999dbed8d4961178e6f37de7b4bbd0b2d50cd0326bedae01ceccfd29b831` across 18 deployed source files. At that migration, two accounts, semester settings, a Calculus II folder, and a note were preserved. The attached document was copied and verified by SHA-256. Active sessions were omitted from that migration; users signed in again with existing passwords.
+
+That release passed 13 isolated tests plus public checks for sign-in, pending-member restrictions, administrator approval, a 6 MiB direct upload and matching download, ticket replay rejection, immutable published objects, invalid attachment rejection, and revoked posting access. Temporary test content, accounts, sessions, and files were cleaned up. Browser checks confirmed the then-migrated content and note dialog with no console errors. Public API state is not cached and production cookies are secure.
+
+Vercel runtime log retrieval previously timed out; no clean platform error-log scan is claimed. Free-plan quotas and inactivity rules apply.
+
+No paid upgrade was made. Earlier Azure resources and local data were preserved.

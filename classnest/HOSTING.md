@@ -16,7 +16,9 @@ The application source lives in this repository's `classnest/` folder. Run its c
 | Browser/PWA phone alerts | Standard Web Push with server-side VAPID keys |
 | Native Android alerts | Firebase Spark project `classnest-pu-soe`; private server credential configured and OAuth/FCM authorization checked |
 
-Latest privacy/mobile/announcement/push release: READY in production; source and worker checks passed. Deployment `dpl_4khExEGH8KKJcgZaXNpgnrj84gUw`; source SHA-256 `fbcee2715844d9fa3b6d90f8b5cfe158a6315c2ec82500d148106847c6fef754`; website test total `131`. The earlier address, `classnest-pu.vercel.app`, redirects to the primary website. Actual phone notification delivery is a separate supported-device check.
+Latest WhatsApp/support-recovery source update: **147 website tests passed**. The release is READY in production: deployment `dpl_7p1QeXUcWzEbPCWgur74LRV1tBws`, source SHA-256 `114bc5075103a10392335b7d563e4a8e02e19ad3d9141fbb3f9bec72e8c15ba4`. Browser QA covered support forms/navigation; temporary-password transitions were exercised with synthetic HTTP accounts, without resetting a real production account. The earlier address, `classnest-pu.vercel.app`, continues to redirect to the primary website. Physical-device installation and notification delivery remain separate checks.
+
+Historical preceding privacy/mobile/announcement/push release: deployment `dpl_4khExEGH8KKJcgZaXNpgnrj84gUw`, source SHA-256 `fbcee2715844d9fa3b6d90f8b5cfe158a6315c2ec82500d148106847c6fef754`, 131 tests, READY production source/access/data-preservation and worker checks. Those facts describe that earlier release.
 
 The preceding mobile/student-lock deployment was `dpl_9ohMbPv9WxytCDTHMTv2zNNtL1Pe`, READY with SHA-256 `f79380302ac75c22888aba88f92692aaa4055a3cf6a25a83b6da889466fa2c4e` across 54 source files. Its 108 website tests, Android build/signature checks, production checks, and automatic worker run remain historical evidence in [DEPLOYMENT.md](DEPLOYMENT.md); they do not establish delivery through the new phone channels.
 
@@ -75,9 +77,21 @@ The entries below describe settings; they contain no credentials. Retain the cur
 
 Keep the encryption and worker secrets stable across deployments. [EMAIL-SETUP.md](EMAIL-SETUP.md) explains sender verification, consent, queue budgets, and the authenticated worker. Changing a domain requires coordinated origin, redirect, and queued-email handling as described there.
 
+## Support and assisted password recovery
+
+The primary support contact is [WhatsApp · +977 9763214754](https://wa.me/9779763214754), available in the footer, FAQs, account/recovery screens, and Android 1.1.1 app menu. This is a user-opened link with no automatic message or account details. It does not replace the configured Brevo sender, reset emails, VAPID contact, or notification preferences, and requires no WhatsApp API credential or paid integration.
+
+The existing **Sign in → Forgot password?** email flow stays available. **Request admin help** accepts an email and optional 500-character message with a generic acknowledgement. Administrators use **Manage workspace → Password help requests**, verify the person independently, record the check, and reauthenticate with their own current password for both verification and reset. The same administrator has 30 minutes to complete a verified reset. A temporary password expires after 24 hours, revokes existing sessions/device bindings, and requires personal-password change before class or administrator tools open. Pending/blocked restrictions, account role, semester and email preferences remain unchanged. Do not ask for an old user password or verification code. Self-service changes continue through Account → Change password.
+
+The new `password-support.js` module uses owner-run `schema/password-support-postgres.sql`, applied in production as `classnest_admin_password_support`. Its request table has RLS, restricted-server CRUD only, zero browser-role/PUBLIC grants, and zero Supabase security-advisor findings. SQLite automatically initializes `schema/password-support-sqlite.sql`. Support requests and verification notes stay out of portable class exports; temporary account hash markers/expiry survive export/import. No account re-import, runtime PostgreSQL DDL, extra environment variable, or new hosting resource is needed.
+
+The current 147-test suite covers acknowledgement/throttling, impersonation, reauthentication, stale-session/password and replay denial, temporary expiry/forced change, approval preservation, portable hashes, escaped private queue rendering, frontend secret clearing, and gated class/push views. Browser form checks do not imply a real production password was reset.
+
 ## Phone-alert setup, user consent, and reversal
 
-Web Push VAPID configuration is saved on the server, and `schema/push-postgres.sql` is applied with RLS/server-only permissions. The security advisor returned zero findings after that migration. Web clients use the standard Push API and the same-origin service worker; the website does not load a Firebase browser SDK. Free Firebase Spark project `classnest-pu-soe` has been created for the native Android channel. Its private service-account credential is saved only in the production server environment. Google OAuth and a delivery-free FCM validation request passed; actual device receipt remains unverified. The Android 1.1.0 client supports that channel on devices with Google Play Services once configuration is complete.
+The signed Android 1.1.1 APK is version code 3, package `app.classnest.pusoe`, for Android 8.0+ (minimum SDK 26, target SDK 35). It is 2,852,715 bytes; SHA-256 `0290fcfe2810b12b585c6cfc3e83b9d76e88e5e12bc5153ed67898215c03a859`. Build/lint, v2 signature, 16 KiB alignment and 72 URL-policy checks passed. Its WhatsApp menu is manual and its phone-alert path remains opt-in. Download and checksum links are in [MOBILE.md](MOBILE.md); installation and receipt on a physical phone remain unverified.
+
+Web Push VAPID configuration is saved on the server, and `schema/push-postgres.sql` is applied with RLS/server-only permissions. The security advisor returned zero findings after that migration. Web clients use the standard Push API and the same-origin service worker; the website does not load a Firebase browser SDK. Free Firebase Spark project `classnest-pu-soe` has been created for the native Android channel. Its private service-account credential is saved only in the production server environment. Google OAuth and a delivery-free FCM validation request passed; actual device receipt remains unverified. The current Android 1.1.1 client supports that channel on devices with Google Play Services.
 
 Approved users open **Notifications → Enable phone alerts** and accept their own browser/OS permission prompt. The site never prompts or subscribes on load. Compatible Android/desktop browsers can use Web Push; iPhone/iPad needs iOS/iPadOS 16.4 or later and Safari **Share → Add to Home Screen**, followed by opening that installed app and signing in. Android APK users use **Enable phone alerts** in the native app menu. An installed PWA with a waiting service-worker update may need to be closed and reopened. OS permissions and provider/network state affect delivery; no exact-time or real-device receipt claim is made without a device test.
 
@@ -100,6 +114,7 @@ For a genuinely new, empty PostgreSQL project, follow [FREE-HOSTING.md](FREE-HOS
 7. `schema/notice-attachments-postgres.sql`
 8. `schema/push-postgres.sql`
 9. `schema/class-reminders-postgres.sql`
+10. `schema/password-support-postgres.sql`
 
 Create the private attachment bucket and initialize or import the intended workspace only through the documented setup procedure. Imports refuse occupied targets. After the worker route is live and its secret is stored in Supabase Vault, follow [EMAIL-SETUP.md](EMAIL-SETUP.md) for `schema/email-worker-postgres.sql` and `schema/teaching-worker-postgres.sql`. They configure one existing delivery job, not a second scheduler. Never run the initial schema or an import over the current production database.
 

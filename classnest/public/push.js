@@ -4,7 +4,7 @@
   let h,config=null,devices=[],subscription=null,busy=false,status='',generation=0,loading=null;
   const ua=navigator.userAgent||'',nativeApp=/\bClassnestAndroid\//.test(ua);
   const ios=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  const approved=()=>['admin','teacher','member'].includes(h?.state()?.user?.role)&&!h.state()?.requiresApproval;
+  const approved=()=>['admin','teacher','member'].includes(h?.state()?.user?.role)&&!h.state()?.requiresApproval&&!h.state()?.requiresPasswordChange&&!h.state()?.user?.passwordChangeRequired;
   const supported=()=>window.isSecureContext&&'Notification' in window&&'PushManager' in window&&'serviceWorker' in navigator;
   const standalone=()=>navigator.standalone===true||window.matchMedia?.('(display-mode: standalone)').matches===true;
   const webDevices=()=>devices.filter(device=>device.kind==='web');

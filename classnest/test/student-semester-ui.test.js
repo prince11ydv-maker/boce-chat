@@ -16,11 +16,12 @@ const approvalFlow=source.slice(approvalStart,approvalEnd);
 
 function stateFor(user, semester, allowed=[3,4]) {
   const requiresApproval=!!user&&!['admin','teacher','member'].includes(user.role);
+  const requiresPasswordChange=!!user?.passwordChangeRequired;
   return {
-    user, requiresLogin: !user, requiresApproval, selectedSemester: semester, semesterLocked: !!user && !['admin', 'teacher'].includes(user.role),
+    user, requiresLogin: !user, requiresApproval, requiresPasswordChange, selectedSemester: semester, semesterLocked: !!user && !['admin', 'teacher'].includes(user.role),
     settings: {name: 'Classnest', institution: 'PU', semester: 3},
     semesters: (user&& !['admin','teacher'].includes(user.role)?[user.semester]:allowed).map(id=>({id,name:'Semester '+id})),
-    subjects: user&&!requiresApproval ? [{id: 'subject-' + semester}] : [], notes: user&&!requiresApproval ? [{id: 'note-' + semester, semester}] : [],
+    subjects: user&&!requiresApproval&&!requiresPasswordChange ? [{id: 'subject-' + semester}] : [], notes: user&&!requiresApproval&&!requiresPasswordChange ? [{id: 'note-' + semester, semester}] : [],
     notices: [], events: [], threads: []
   };
 }
@@ -123,6 +124,29 @@ test('approval and revocation replace the gateway or private class view and clos
   app.get('#modal').open=true;app.setUser({...student,role:'blocked'});await app.ui.refresh();
   assert.equal(app.get('#modal').open,false);assert.match(app.get('#main').innerHTML,/Class access is currently disabled/);
   assert.doesNotMatch(app.get('#main').innerHTML,/note-3/);assert.ok(app.resets>0);
+});
+
+test('temporary-password accounts get the mandatory personal-password form before class pages or admin tools',async()=>{
+  for(const role of ['member','teacher','admin','pending','blocked'])for(const hash of ['#home','#subjects','#admin','#teaching','#notifications']){
+    const app=browser({user:{...student,role,passwordChangeRequired:true},hash});await app.ui.refresh();
+    assert.deepEqual(app.calls,['/state']);assert.equal(app.ui.selectSemester(4),false);
+    const html=app.get('#main').innerHTML;assert.match(html,/Make this password yours/);
+    assert.match(html,/id="password-change-form"/);assert.match(html,/name="current"/);
+    assert.match(html,/name="password"/);assert.match(html,/name="confirmation"/);
+    assert.match(html,/Save personal password/);assert.match(html,/https:\/\/wa\.me\/9779763214754/);
+    assert.doesNotMatch(html,/HOME|note-3|note-4|data-action="login"|data-action="register"/);
+    assert.equal(app.get('#global-search-form').hidden,true);assert.equal(app.get('#semester').disabled,true);
+    assert.match(app.get('#top-action').innerHTML,/My account/);
+  }
+});
+
+test('a newly required password clears private previews, and finishing recovery preserves pending approval',async()=>{
+  const app=browser({user:student,search:'?semester=3'});await app.ui.refresh();
+  app.get('#modal').open=true;app.setUser({...student,passwordChangeRequired:true});await app.ui.refresh();
+  assert.equal(app.get('#modal').open,false);assert.match(app.get('#main').innerHTML,/Make this password yours/);
+  assert.doesNotMatch(app.get('#main').innerHTML,/note-3/);assert.ok(app.resets>0);
+  app.setUser({...student,role:'pending',passwordChangeRequired:false});await app.ui.refresh();
+  assert.match(app.get('#main').innerHTML,/awaiting administrator approval/);assert.doesNotMatch(app.get('#main').innerHTML,/note-3/);
 });
 
 test('approved teachers and administrators retain cross-semester UI browsing', async () => {

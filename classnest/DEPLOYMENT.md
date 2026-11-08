@@ -2,9 +2,21 @@
 
 Public website: **https://pusoe.vercel.app**. The previous address, https://classnest-pu.vercel.app, redirects to it with paths, queries, and email-link fragments preserved.
 
-The current release adds semester privacy, a responsive mobile header, teacher announcements, student class reminders and opt-in phone notification delivery. Release facts below distinguish automated checks, cloud configuration and physical-device verification.
+The current release adds WhatsApp support and verified administrator-assisted password recovery. Release facts below distinguish automated checks, cloud configuration and physical-device verification.
 
-## Semester privacy, mobile header and phone alerts · 8 November 2026
+## WhatsApp support and assisted recovery · 8 November 2026
+
+Production deployment: `dpl_7p1QeXUcWzEbPCWgur74LRV1tBws`; source SHA-256 `114bc5075103a10392335b7d563e4a8e02e19ad3d9141fbb3f9bec72e8c15ba4` across 62 deployment files. All 147 website tests passed. The primary support contact is https://wa.me/9779763214754, also available through the Android app menu. Opening that link does not send a message. The signed Android 1.1.1 APK (code 3) is 2,852,715 bytes, SHA-256 `0290fcfe2810b12b585c6cfc3e83b9d76e88e5e12bc5153ed67898215c03a859`. Its release build/lint, existing signing certificate, v2 signature, 16 KiB alignment and 72 URL-policy checks passed.
+
+The existing email Forgot password workflow remains available. A separate help request returns the same public acknowledgement for known and unknown email addresses. Administrators review requests in Manage workspace, independently verify identity and reauthenticate before issuing a temporary password. Verification lasts 30 minutes and binds the same verifier and current target-password stamp. Issuing the password consumes the request, revokes target sessions and recovery links, and requires a different personal password before class access. Temporary credentials expire after 24 hours. Role, approval, semester and mailbox-verification status stay unchanged. No plaintext credential is stored, logged or automatically sent to WhatsApp.
+
+The owner migration `classnest_admin_password_support` is applied. Its operational table has RLS, zero browser/PUBLIC grants and restricted-server CRUD; the security advisor returned no findings. Support request records are excluded from portable exports. Temporary-password markers remain in exported account hashes so restoration cannot bypass the personal-password gate.
+
+Local browser/API checks exercised public submission, the private verified-request controls, temporary login, the empty class-data gate, blocked private APIs, and successful personal-password recovery into the original semester. Tests used isolated synthetic accounts and no SMTP connection. Existing email recovery tests passed. Production checks create no test request and change no real account password, role, semester or content. Live verification: The homepage and state returned 200, all nine frontend byte hashes matched, guest class data remained empty and email recovery was available. Anonymous admin reads/resets returned 403; malformed help/email requests returned 400 without creating records. Both manual filenames returned 404. The private documentation repository returned 404 without authentication. The Android artifact returned 200 with its exact release checksum; the former domain retained 308. Production account/content counts stayed unchanged and the help queue stayed empty..
+
+The source inventory contains 150 application/release files. Private operational documents, credentials and database backups are excluded from app deployment and source ZIPs. Physical phone installation and notification receipt remain unverified.
+
+## Earlier: semester privacy, mobile header and phone alerts · 8 November 2026
 
 Production deployment: `dpl_4khExEGH8KKJcgZaXNpgnrj84gUw`; source SHA-256 `fbcee2715844d9fa3b6d90f8b5cfe158a6315c2ec82500d148106847c6fef754` across 59 deployment files. The website, Android/iPhone home-screen app and Android client share server permissions. Signed-out visitors receive only branding and signup metadata. Pending/blocked accounts also receive empty class data; files and timetables require a fresh approved account. Students see only their current administrator-assigned semester. Approved teachers browse their chosen teaching semesters plus active assignments; dashboard notes/counts follow that scope. Private class ownership and discussion permissions remain separately enforced.
 

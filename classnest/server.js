@@ -7,6 +7,7 @@ import {openStorage} from './storage-adapter.js';
 import {createMailer} from './mailer.js';
 import {createEmailOutbox} from './email-outbox.js';
 import {createPasswordResetService} from './password-reset.js';
+import {createPasswordSupport,passwordChangeRequired,passwordAuthenticationHash} from './password-support.js';
 import {createEmailPreferences} from './email-preferences.js';
 import {routineKinds,validateRoutineContent,emptyRoutineContent,publicRoutine} from './routine-data.js';
 import {createTeachingService} from './teaching.js';
@@ -118,19 +119,21 @@ async function announceSharedNote(req,{id,subject,title}){
   req.afterCommit.push(scheduleEmailDelivery);
 }
 const passwordMatches = async (p, stored) => {
-  const parts = stored?.split(':') || [], modern = parts[0] === 's2', salt = parts[modern ? 1 : 0], digest = parts[modern ? 2 : 1];
+  const authentication=passwordAuthenticationHash(stored),parts = authentication.encoded?.split(':') || [], modern = parts[0] === 's2', salt = parts[modern ? 1 : 0], digest = parts[modern ? 2 : 1];
   const valid = (/^[a-f0-9]{32}$/).test(salt || '') && (/^[a-f0-9]{128}$/).test(digest || '');
   const safeSalt = valid ? salt : ('0').repeat(32), expected = Buffer.from(valid ? digest : ('0').repeat(128), 'hex');
   const [current, legacy] = await Promise.all([derive(p, safeSalt, 64, newHashOptions), derive(p.trim(), safeSalt, 64)]);
-  return timingSafeEqual(expected, modern ? current : legacy) && valid;
+  return timingSafeEqual(expected, modern ? current : legacy) && valid&&!authentication.expired;
 };
+const passwordSupport=createPasswordSupport({db,hashPassword:passwordHash,passwordMatches});
 const publicUser = u => u ? {
   id: u.id,
   name: u.name,
   email: u.email,
   role: u.role,
   accountType: u.role==='admin'?'admin':u.role==='teacher'?'teacher':u.accounttype||'student',
-  semester: u.semester ?? null
+  semester: u.semester ?? null,
+  passwordChangeRequired:passwordChangeRequired(u.password)
 } : null;
 const all = (sql, ...params) => db.all(sql, ...params);
 const get = (sql, ...params) => db.get(sql, ...params);
@@ -172,8 +175,13 @@ const semester = async v => {
 };
 const semesterLocked = user => Boolean(user && !['admin','teacher'].includes(user.role));
 const approvedReader = user => Boolean(user&&['admin','member','teacher'].includes(user.role));
+const temporaryPasswordPaths=new Set(['/state','/password','/logout','/login','/forgot-password','/reset-password','/email/verify','/email/unsubscribe','/support/password-requests','/health','/ready']);
+function enforcePasswordChange(user,requestPath){
+  if(passwordChangeRequired(user?.password)&&!temporaryPasswordPaths.has(requestPath.replace(/^\/api(?=\/)/,'')))throw Object.assign(new Error('Change your temporary password before continuing.'),{status:428,code:'PASSWORD_CHANGE_REQUIRED'});
+}
 function requireClassReader(req){
   if(!req.user)fail(401,'Please sign in to view your class.');
+  if(passwordChangeRequired(req.user.password))throw Object.assign(new Error('Change your temporary password before viewing class content.'),{status:428,code:'PASSWORD_CHANGE_REQUIRED'});
   if(!approvedReader(req.user))fail(403,'Your account needs administrator approval before viewing class content.');
 }
 async function currentReader(req) {
@@ -229,6 +237,7 @@ app.use('/api', async (req, res, next) => {
     const session = await get('SELECT * FROM sessions WHERE token=? AND expires>?', hash(raw), Date.now());
     if (session) req.user = await get('SELECT * FROM users WHERE id=?', session.userId);
   }
+  enforcePasswordChange(req.user,req.path);
   if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     if (req.headers['x-classnest-request'] !== '1') return res.status(403).json({
       error: 'Request verification failed.'
@@ -273,6 +282,7 @@ const atomic=handler=>async(req,res,next)=>{
         if(!current)fail(401,'Please sign in again.');
         if(req.requiredRole==='admin'&&current.role!=='admin'||req.requiredRole==='member'&&!['member','admin','teacher'].includes(current.role))fail(403,'Posting access was revoked.');
         req.user=current;
+        enforcePasswordChange(current,req.path);
       }
       await handler(req,res,error=>{if(error)throw error;});
       handlerFinished=true;
@@ -400,10 +410,11 @@ app.get('/api/state', async (req, res) => {
   const payload=await db.transaction(async()=>{
   await currentReader(req);
   const settings=await get('SELECT * FROM settings'),needsSetup=!await get("SELECT id FROM users WHERE role='admin'");
-  if(!req.user)return {settings,semesters:await all('SELECT id,name FROM semesters ORDER BY id'),selectedSemester:settings.semester,semesterLocked:false,user:null,requiresLogin:true,requiresApproval:false,directUploads:false,emailAvailable:emailOutbox.enabled,emailDelivery:null,needsSetup,subjects:[],notes:[],notices:[],threads:[],routines:{class:null,exam:null},teaching:null,events:[]};
+  if(!req.user)return {settings,semesters:await all('SELECT id,name FROM semesters ORDER BY id'),selectedSemester:settings.semester,semesterLocked:false,user:null,requiresLogin:true,requiresApproval:false,requiresPasswordChange:false,directUploads:false,emailAvailable:emailOutbox.enabled,emailDelivery:null,needsSetup,subjects:[],notes:[],notices:[],threads:[],routines:{class:null,exam:null},teaching:null,events:[]};
+  if(passwordChangeRequired(req.user.password))return {settings,semesters:await all('SELECT id,name FROM semesters WHERE id=?',req.user.semester),teacherSemesterOptions:[],selectedSemester:req.user.semester,semesterLocked:true,user:publicUser(req.user),requiresLogin:false,requiresApproval:!approvedReader(req.user),requiresPasswordChange:true,directUploads:false,emailAvailable:emailOutbox.enabled,emailDelivery:null,needsSetup,subjects:[],notes:[],notices:[],threads:[],routines:{class:null,exam:null},teaching:null,events:[]};
   if(!approvedReader(req.user)){
     const selected=await semester(req.query.semester??req.user.semester);if(selected!==req.user.semester)fail(403,'Your account is limited to your assigned semester.');
-    return {settings,semesters:await all('SELECT id,name FROM semesters WHERE id=?',selected),teacherSemesterOptions:req.user.role==='pending'&&req.user.accounttype==='teacher'?await all('SELECT id,name FROM semesters ORDER BY id'):[],selectedSemester:selected,semesterLocked:true,user:publicUser(req.user),requiresLogin:false,requiresApproval:true,directUploads:false,emailAvailable:emailOutbox.enabled,emailDelivery:null,needsSetup,subjects:[],notes:[],notices:[],threads:[],routines:{class:null,exam:null},teaching:null,events:[]};
+    return {settings,semesters:await all('SELECT id,name FROM semesters WHERE id=?',selected),teacherSemesterOptions:req.user.role==='pending'&&req.user.accounttype==='teacher'?await all('SELECT id,name FROM semesters ORDER BY id'):[],selectedSemester:selected,semesterLocked:true,user:publicUser(req.user),requiresLogin:false,requiresApproval:true,requiresPasswordChange:false,directUploads:false,emailAvailable:emailOutbox.enabled,emailDelivery:null,needsSetup,subjects:[],notes:[],notices:[],threads:[],routines:{class:null,exam:null},teaching:null,events:[]};
   }
   const selected = await browseSemester(req,req.query.semester);
   return {
@@ -414,6 +425,7 @@ app.get('/api/state', async (req, res) => {
     semesterLocked:semesterLocked(req.user),
     requiresLogin:false,
     requiresApproval:false,
+    requiresPasswordChange:false,
     user: publicUser(req.user),
     directUploads:cloudStorage,
     emailAvailable:emailOutbox.enabled,
@@ -515,7 +527,7 @@ app.post('/api/login', authLimiter, authWork(atomic(async (req, res) => {
     return;
   }
   if ((await get('SELECT password FROM users WHERE id=?', u.id))?.password !== u.password) fail(401, 'Email or password is incorrect.');
-  if (!u.password.startsWith('s2:')) {
+  if (!u.password.startsWith('s2:')&&!passwordChangeRequired(u.password)) {
     const upgraded = await passwordHash(secret.trim());
     if (!(await run('UPDATE users SET password=? WHERE id=? AND password=?', upgraded, u.id, u.password)).changes) fail(401, 'Email or password is incorrect.');
   }
@@ -541,6 +553,12 @@ app.post('/api/forgot-password',resetIpLimiter,resetAddressLimiter,async(req,res
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Enter a valid email address.');
   const result=await passwordResets.request(email);scheduleEmailDelivery();res.status(202).json(result);
 });
+const supportIpLimiter=requestLimiter(db,'password-support-ip',{windowMs:3600000,limit:10,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Too many support requests. Please try again later.'}});
+app.post('/api/support/password-requests',supportIpLimiter,async(req,res)=>res.status(202).json(await passwordSupport.request(req.body)));
+app.get('/api/admin/password-requests',admin,async(req,res)=>res.json(await passwordSupport.list(req.user.id,req.sessionToken)));
+app.post('/api/admin/password-requests/:id/verify',admin,authLimiter,authWork(async(req,res)=>res.json(await passwordSupport.verifyRequest(req.user.id,req.sessionToken,req.params.id,req.body))));
+app.post('/api/admin/password-requests/:id/resolve',admin,authLimiter,authWork(async(req,res)=>res.json(await passwordSupport.resolve(req.user.id,req.sessionToken,req.params.id,req.body))));
+app.post('/api/admin/password-requests/:id/reject',admin,authLimiter,authWork(async(req,res)=>res.json(await passwordSupport.reject(req.user.id,req.sessionToken,req.params.id,req.body))));
 app.post('/api/reset-password',authLimiter,authWork(atomic(async(req,res)=>{
   const result=await passwordResets.consume(req.body.token,checkPassword(password(req.body.password)));
   res.clearCookie('classnest_session',{path:'/',httpOnly:true,sameSite:'lax',secure:production});res.json(result);
@@ -567,11 +585,13 @@ app.post('/api/internal/email-delivery',async(req,res)=>{
 app.post('/api/password', signed, authLimiter, authWork(atomic(async (req, res) => {
   const old = password(req.body.current, 'Current password'), next = checkPassword(password(req.body.password, 'New password'));
   if (!await passwordMatches(old, req.user.password)) fail(403, 'Current password is incorrect.');
+  if(await passwordMatches(next,req.user.password))fail(400,'Choose a new password different from your current password.');
   const stored = await passwordHash(next);
   if ((await get('SELECT password FROM users WHERE id=?', req.user.id))?.password !== req.user.password) fail(409, 'Your account changed. Sign in again before changing the password.');
   await run('UPDATE users SET password=? WHERE id=?', stored, req.user.id);
   await run('DELETE FROM sessions WHERE userId=?', req.user.id);
   await run('DELETE FROM password_resets WHERE userId=?',req.user.id);
+  await run('DELETE FROM email_verifications WHERE userId=?',req.user.id);
   await setSession(req, res, req.user);
   res.json({
     ok: true
@@ -1110,7 +1130,8 @@ app.use(async(err, req, res, next) => {
   if (multipart) message = err.code === 'LIMIT_FILE_SIZE' ? 'Files must be 20 MB or smaller.' : 'The upload has too many or invalid fields. Use one attachment per note.';
   if(unavailable){message='The workspace database is waking up or temporarily unavailable. Please try again shortly.';res.set('Retry-After','15');}
   res.status(status).json({
-    error: message
+    error: message,
+    ...(err.code==='PASSWORD_CHANGE_REQUIRED'?{code:'PASSWORD_CHANGE_REQUIRED'}:{})
   });
   if (status >= 500) console.error('Request failed:', err.code || err.name);
 });

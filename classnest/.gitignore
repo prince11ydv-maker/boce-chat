@@ -20,3 +20,6 @@ PRIVATE-Database-Backups/
 *.sqlite-*
 *.db
 *.db-*
+PRIVATE-Admin-Guide/
+ADMIN-GUIDE.md
+ADMIN-GUIDE.html

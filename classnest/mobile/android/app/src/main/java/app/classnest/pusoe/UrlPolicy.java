@@ -9,6 +9,7 @@ import java.util.regex.Pattern;
 public final class UrlPolicy {
     public static final String ORIGIN = "https://pusoe.vercel.app";
     public static final String HOME = ORIGIN + "/?source=android#home";
+    public static final String WHATSAPP_SUPPORT = "https://wa.me/9779763214754";
     private static final String HOST = "pusoe.vercel.app";
     private static final String STORAGE_HOST = "bsuspunntvruyrtfaycu.supabase.co";
     private static final String UUID = "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}";

@@ -11,7 +11,7 @@
   const e=value=>h.esc(value);
   const button=(label,action,id='',cls='button-small')=>`<button type="button" class="button ${cls}" data-teach="${action}" ${id?`data-id="${e(id)}"`:''}>${label}</button>`;
   const role=()=>h.state()?.user?.role;
-  const approved=()=>['admin','member','teacher'].includes(role())&&!h.state()?.requiresApproval;
+  const approved=()=>['admin','member','teacher'].includes(role())&&!h.state()?.requiresApproval&&!h.state()?.requiresPasswordChange&&!h.state()?.user?.passwordChangeRequired;
   const staff=()=>['admin','teacher'].includes(role());
   const dateLabel=value=>new Date(value+'T12:00:00+05:45').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'short',timeZone:'Asia/Kathmandu'});
   const etaLabel=value=>({'1-5':'1–5 minutes','5-10':'5–10 minutes','10+':'10+ minutes'}[value]||'');

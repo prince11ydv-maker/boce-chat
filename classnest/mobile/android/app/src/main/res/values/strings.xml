@@ -14,4 +14,5 @@
     <string name="phone_alert_disabled">Phone alerts are off for this app.</string>
     <string name="phone_alert_enable">Enable phone alerts</string>
     <string name="phone_alert_disable">Turn off phone alerts</string>
+    <string name="whatsapp_support">WhatsApp support</string>
 </resources>

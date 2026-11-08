@@ -55,6 +55,12 @@ test('pending and blocked accounts neither load device settings nor request brow
   }
 });
 
+test('temporary-password recovery cannot load or enable phone-alert devices before personal password change',async()=>{
+  const app=client();app.setUser({...user,passwordChangeRequired:true});await app.ui.load();
+  await app.click('enable');await app.click('disable');assert.deepEqual(app.calls,[]);
+  assert.equal(app.ui.panel(),'');assert.equal(app.counts.permission,0);assert.equal(app.counts.subscribe,0);
+});
+
 test('an account transition during the permission prompt cannot attach a subscription to the next account',async()=>{
   let resolvePermission;const permissionPromise=new Promise(resolve=>resolvePermission=resolve),app=client({permissionPromise});await app.ui.load();
   const enabling=app.click('enable');assert.equal(app.counts.permission,1);

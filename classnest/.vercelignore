@@ -9,3 +9,5 @@ scripts
 *.md
 START-WEBSITE.cmd
 mobile
+PRIVATE-*/
+ADMIN-GUIDE.*

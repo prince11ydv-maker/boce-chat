@@ -437,6 +437,7 @@ public final class MainActivity extends Activity {
         menu.getMenu().add(0, 3, 2, "Share Classnest");
         menu.getMenu().add(0, 4, 3, "About Classnest");
         menu.getMenu().add(0, 5, 4, NativePush.enabled(this) ? R.string.phone_alert_disable : R.string.phone_alert_enable);
+        menu.getMenu().add(0, 6, 5, R.string.whatsapp_support);
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) new AlertDialog.Builder(this).setTitle("Reload Classnest?")
                 .setMessage("Finish or save any changes before reloading.").setNegativeButton("Keep working", null)
@@ -458,6 +459,7 @@ public final class MainActivity extends Activity {
                     .setNegativeButton("Not now", null)
                     .setPositiveButton("Continue", (dialog, which) -> requestPhoneAlerts()).show();
             }
+            if (item.getItemId() == 6) openExternal(UrlPolicy.WHATSAPP_SUPPORT);
             return true;
         });
         menu.show();

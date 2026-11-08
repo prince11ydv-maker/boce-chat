@@ -167,6 +167,7 @@ dialog{background:var(--paper)}
 .footer-contact{align-items:flex-end;text-align:right}
 .footer-contact>a{color:var(--green);overflow-wrap:anywhere}
 .footer-contact>a:hover{text-decoration:underline}
+.footer-contact>.footer-whatsapp{display:inline-flex;align-items:center;min-height:44px;font-weight:700}
 .footer-contact>span{font-size:10px}
 @media(max-width:1040px){.faq-layout{grid-template-columns:1fr}.faq-contact{position:static;max-width:none}.faq-contact>.visually-muted{max-width:65ch}.faq-contact>a:not(.button){max-width:260px}.site-footer{padding-inline:25px}}
 @media(max-width:520px){.faq-item summary{font-size:12px;padding:18px}.faq-item>p{font-size:11px;padding:0 18px 19px}.faq-item summary>span{width:23px;height:23px}.faq-layout{gap:20px}.faq-contact{padding:22px}.site-footer{padding:24px 18px;flex-direction:column;gap:20px}.footer-contact{align-items:flex-start;text-align:left}.site-footer>div{width:100%}.footer-identity>strong{font-size:12px}.footer-identity>span{font-size:10px}.footer-contact>a{font-size:11px}.discussion-scope{align-items:flex-start;font-size:10px;padding:14px}.discussion-scope>.icon{margin-top:3px}.member-semester-controls{flex-basis:100%;align-items:flex-end}.member-info{min-width:100px}.member-row .member-role-actions{gap:7px;flex-wrap:wrap}}
@@ -426,3 +427,12 @@ dialog.note-viewer-dialog{max-width:1040px;width:calc(100% - 32px)}
 
 /* Phone-alert controls stay readable beside notification preferences. */
 .push-preferences{padding:22px;border:1px solid var(--line);border-radius:16px;background:var(--paper);margin:0 0 22px;min-width:0}.push-preferences h2{font-size:19px;margin:0 0 10px}.push-preferences p,.push-status{font-size:12px;line-height:1.8;color:var(--muted);overflow-wrap:anywhere}.push-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:15px}.push-actions .button{min-height:44px}.push-status:empty{display:none}@media(max-width:520px){.push-preferences{padding:20px}.push-actions .button{flex:1 1 130px}}
+
+/* Account help uses the same accessible controls as the class workspace. */
+.support-request{padding:22px;border:1px solid var(--line);border-radius:16px;background:var(--paper);margin:18px 0;min-width:0}
+.support-request h2,.support-request h3{margin:0 0 12px;line-height:1.5}
+.support-request p,.support-status{font-size:12px;line-height:1.8;color:var(--muted);overflow-wrap:anywhere}
+.support-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:15px}
+.support-actions .button{min-height:44px;white-space:normal;text-align:center}
+.support-status:empty{display:none}
+@media(max-width:520px){.support-request{padding:20px 18px}.support-actions .button{flex:1 1 140px}}

@@ -11,11 +11,11 @@ Open the new icon and sign in. Installed apps and ordinary browser tabs can keep
 
 ## Android APK
 
-Download [Classnest 1.1.0](mobile/releases/Classnest-1.1.0.apk), or use the [public GitHub download](https://github.com/prince11ydv-maker/boce-chat/raw/refs/heads/main/classnest/mobile/releases/Classnest-1.1.0.apk). Verify it against [its SHA-256 checksum](mobile/releases/Classnest-1.1.0.apk.sha256). Android may ask you to allow installation from your browser or file manager.
+Download [Classnest 1.1.1](mobile/releases/Classnest-1.1.1.apk), or use the [public GitHub download](https://github.com/prince11ydv-maker/boce-chat/raw/refs/heads/main/classnest/mobile/releases/Classnest-1.1.1.apk). Verify it against [its SHA-256 checksum](mobile/releases/Classnest-1.1.1.apk.sha256). Android may ask you to allow installation from your browser or file manager.
 
-The client supports **Android 8.0 and newer**, application ID `app.classnest.pusoe`, version `1.1.0`, version code `2`. It opens the canonical HTTPS Classnest website in a restricted WebView, with native file selection, authenticated attachment downloads, Back navigation, connection/retry screens, and an app menu. Version 1.1.0 adds opt-in phone alerts through Firebase Cloud Messaging (FCM).
+The client supports **Android 8.0 and newer**, application ID `app.classnest.pusoe`, version `1.1.1`, version code `3`. It opens the canonical HTTPS Classnest website in a restricted WebView, with native file selection, authenticated attachment downloads, Back navigation, connection/retry screens, and an app menu. The app includes opt-in phone alerts through Firebase Cloud Messaging (FCM). Version 1.1.1 adds **WhatsApp support** in the native app menu, linking to +977 9763214754 without sending a message automatically.
 
-Install 1.1.0 over 1.0.0 using the same signing certificate to retain app data. The old [1.0.0 APK](mobile/releases/Classnest-1.0.0.apk) remains available but has no native phone alerts. Website updates appear when the latest page loads; native changes require a new APK with a higher version code. Automatic APK updates and store publication are not included. An APK cannot be installed on an iPhone.
+Install 1.1.1 over an existing installation using the same signing certificate to retain app data. The old [1.0.0 APK](mobile/releases/Classnest-1.0.0.apk) remains available but has no native phone alerts. Website updates appear when the latest page loads; native changes require a new APK with a higher version code. Automatic APK updates and store publication are not included. An APK cannot be installed on an iPhone.
 
 ## Semester access
 

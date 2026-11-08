@@ -72,7 +72,37 @@ async function refresh(){
 }
 function route(){const [page,id]=location.hash.slice(1).split('/');return {page:page==='main'?'home':page||'home',id};}
 function heading(eyebrow,title,subtitle,action=''){return `<div class="page-heading"><div><span class="eyebrow">${esc(eyebrow)}</span><h1>${esc(title)}</h1><p>${esc(subtitle)}</p></div>${action}</div>`;}
-function loginGateway(){return `<section class="access-gateway" aria-labelledby="gateway-title"><div class="gateway-copy"><span class="eyebrow">YOUR CLASS, CONNECTED</span><h1 id="gateway-title">Your semester.<br>Your study circle.</h1><p>Sign in to find your class notes, routines, notices, and conversations in one place.</p><ul class="gateway-points"><li>${icon('folder')}<span>Students get a focused space for their assigned semester.</span></li><li>${icon('calendar')}<span>Teachers bring together their selected semesters and assigned classes.</span></li><li>${icon('chat')}<span>Class discussions stay with the people who belong there.</span></li></ul><div class="gateway-actions"><button type="button" class="button button-lime" data-action="auth-portal" data-id="student" data-mode="login">Student sign in ${icon('arrow')}</button><button type="button" class="button button-ghost" data-action="auth-portal" data-id="teacher" data-mode="login">Teacher sign in ↗</button></div></div><aside class="gateway-panel"><span class="eyebrow">A NEW CHAPTER STARTS HERE</span><h2>Make room for learning.</h2><p>Create an account, choose your semester, and join your class after administrator approval.</p><div class="gateway-actions"><button type="button" class="button button-dark" data-action="auth-portal" data-id="student" data-mode="register">Join as a student ↗</button><button type="button" class="button" data-action="auth-portal" data-id="teacher" data-mode="register">Request a teacher account</button></div><a class="section-link" href="#faq">Questions? Start with the FAQs ${icon('arrow')}</a><button type="button" class="inline-link" data-action="auth-portal" data-id="admin" data-mode="login">Administrator sign in</button>${state.needsSetup?actionButton('Set up workspace','setup','button-small'):''}</aside></section>`;}
+function loginGateway(){return `
+<section class="access-gateway homepage-gateway" aria-labelledby="gateway-title">
+  <div class="gateway-copy">
+    <span class="eyebrow">THE DIGITAL HUB FOR YOUR CLASS</span>
+    <h1 id="gateway-title">Everything your class needs. All in one place.</h1>
+    <p>Access notes, schedules, announcements, and discussions—organized perfectly for your current semester.</p>
+    <ul class="gateway-points">
+      <li><strong>For Students:</strong> A distraction-free workspace dedicated to your enrolled classes.</li>
+      <li><strong>For Teachers:</strong> Seamlessly organize semesters, share resources, and broadcast updates.</li>
+      <li><strong>For Everyone:</strong> Private, secure discussions exclusively for your study circle.</li>
+    </ul>
+    <div class="gateway-actions">
+      <button type="button" class="button home-primary" data-action="auth-portal" data-id="student" data-mode="login">Student sign in ${icon('arrow')}</button>
+      <button type="button" class="button home-secondary" data-action="auth-portal" data-id="teacher" data-mode="login">Teacher sign in <span aria-hidden="true">↗</span></button>
+    </div>
+  </div>
+  <section class="gateway-panel" aria-labelledby="join-title">
+    <span class="eyebrow">A NEW CHAPTER STARTS HERE</span>
+    <h2 id="join-title">Make room for learning.</h2>
+    <p>Create an account, choose your semester, and join your class after administrator approval.</p>
+    <div class="gateway-actions">
+      <button type="button" class="button home-primary" data-action="auth-portal" data-id="student" data-mode="register">Join as a student <span aria-hidden="true">↗</span></button>
+      <button type="button" class="button home-secondary" data-action="auth-portal" data-id="teacher" data-mode="register">Request a teacher account</button>
+      ${state.needsSetup?actionButton('Set up workspace','setup','home-secondary'):''}
+    </div>
+    <div class="gateway-help">
+      <a href="#faq">Questions? Start with the FAQs ${icon('arrow')}</a>
+      <button type="button" class="inline-link" data-action="auth-portal" data-id="admin" data-mode="login">Administrator sign in</button>
+    </div>
+  </section>
+</section>`;}
 function approvalGateway(){const blocked=state.user.role==='blocked';return `<section class="access-gateway" aria-labelledby="approval-title"><div class="gateway-copy"><span class="eyebrow">YOUR ACCOUNT IS SIGNED IN</span><h1 id="approval-title">${blocked?'Let’s check your account.':'Your place is waiting.'}</h1><p>${blocked?'Class access is currently disabled for this account. Contact the administrator to review it.':'Your account is awaiting administrator approval. Your class library, routines, notices, and discussions will open after approval.'}</p><div class="gateway-actions">${actionButton('My account','account','button-lime')}${actionButton(blocked?'Check account status':'Check approval','refresh-account','button-ghost')}${actionButton('Sign out','logout','button-ghost')}</div></div><aside class="gateway-panel"><span class="eyebrow">${blocked?'WORKSPACE HELP':'ONE CLASS, ONE COMMUNITY'}</span><h2>${blocked?'Contact the administrator.':'A quick check before you join.'}</h2><p><strong>${esc(state.user.name)}</strong><br>${esc(state.user.email)}<br>${esc(semesterLabel(state.user.semester))}</p><p>${blocked?'Ask the administrator about your account status. You can still manage your own account settings and sign out.':'The administrator checks your semester and account type to keep class content with its members. You can manage your own account settings while you wait.'}</p>${supportLink()}<a class="section-link" href="#faq">Help & FAQs ${icon('arrow')}</a></aside></section>`;}
 function passwordChangeGateway(){return `<section class="access-gateway" aria-labelledby="password-change-title"><div class="gateway-copy"><span class="eyebrow">ONE LAST STEP TO SECURE YOUR ACCOUNT</span><h1 id="password-change-title">Make this password yours.</h1><p>You signed in with a temporary password. Set your own personal password before opening class content or workspace tools.</p><p>This keeps your account private after administrator-assisted recovery. Your semester and approval status stay the same.</p><div class="gateway-actions">${actionButton('My account','account','button-ghost')}${actionButton('Sign out','logout','button-ghost')}</div></div><aside class="gateway-panel"><h2>Choose your personal password.</h2><form id="password-change-form">${passwordChangeFields()}<p class="form-error" id="password-change-error" role="alert"></p><button class="button button-dark" type="submit">Save personal password ↗</button></form><p class="visually-muted">Need help? Open WhatsApp support yourself. Never send your old password or a verification code.</p>${supportLink()}</aside></section>`;}
 function passwordChangeFields(){return `<label class="field">Current temporary password<input name="current" type="password" required maxlength="200" autocomplete="current-password"></label><label class="field">New personal password · at least 12 characters<input name="password" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label><label class="field">Repeat new personal password<input name="confirmation" type="password" required minlength="12" maxlength="200" autocomplete="new-password"></label>`;}

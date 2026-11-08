@@ -1,0 +1,283 @@
+/* 1. Design tokens: scoped names preserve the existing application themes. */
+:root {
+  --home-background: #191c2b;
+  --home-surface: #292c3c;
+  --home-hero: #41469e;
+  --home-hero-border: #696dc1;
+  --home-text: #ffffff;
+  --home-muted: #c9cddd;
+  --home-lavender: #eeebff;
+  --home-lavender-hover: #ded8ff;
+  --home-lavender-ink: #312d50;
+  --home-primary: #ddff98;
+  --home-primary-hover: #ceef87;
+  --home-primary-ink: #29372d;
+  --home-font: "Segoe UI", Arial, sans-serif;
+  --home-heading-font: "Segoe UI Variable Display", "Segoe UI", Arial, sans-serif;
+  --home-space-xs: 0.5rem;
+  --home-space-sm: 1rem;
+  --home-space-md: 1.5rem;
+  --home-space-lg: 2rem;
+  --home-space-xl: 3rem;
+  --home-radius: 1.75rem;
+}
+
+/* 2. Page flow: the footer follows the content and reaches the viewport bottom. */
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.shell > main {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+
+.homepage-gateway {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--home-space-md);
+  margin: 0;
+  font-family: var(--home-font);
+}
+
+/* 3. Full-width purple hero. */
+.homepage-gateway .gateway-copy {
+  padding: var(--home-space-xl);
+  border: 1px solid var(--home-hero-border);
+  border-radius: var(--home-radius);
+  background: var(--home-hero);
+  color: var(--home-text);
+}
+
+.homepage-gateway .gateway-copy .eyebrow,
+.homepage-gateway .gateway-panel .eyebrow {
+  display: block;
+  color: var(--home-lavender);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: 0.14em;
+}
+
+.homepage-gateway .gateway-copy h1 {
+  max-width: 22ch;
+  margin: var(--home-space-md) 0;
+  font-family: var(--home-heading-font);
+  font-size: clamp(2.25rem, 4.2vw, 4.25rem);
+  font-weight: 750;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.homepage-gateway .gateway-copy p {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--home-lavender);
+  font-size: 1.125rem;
+  line-height: 1.8;
+}
+
+.homepage-gateway .gateway-points {
+  display: grid;
+  gap: var(--home-space-sm);
+  max-width: 76ch;
+  margin: var(--home-space-lg) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.homepage-gateway .gateway-points li {
+  position: relative;
+  padding-left: var(--home-space-md);
+}
+
+.homepage-gateway .gateway-points li::before {
+  content: "";
+  position: absolute;
+  top: 0.65em;
+  left: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--home-primary);
+}
+
+.homepage-gateway .gateway-points strong {
+  color: var(--home-primary);
+  font-weight: 700;
+}
+
+/* 4. Secondary enrollment card, below the hero at every screen size. */
+.homepage-gateway .gateway-panel {
+  padding: var(--home-space-xl);
+  border: 1px solid #45495c;
+  border-radius: var(--home-radius);
+  background: var(--home-surface);
+  color: var(--home-text);
+}
+
+.homepage-gateway .gateway-panel h2 {
+  margin: var(--home-space-sm) 0;
+  font-family: var(--home-heading-font);
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.homepage-gateway .gateway-panel p {
+  max-width: 66ch;
+  margin: 0;
+  color: var(--home-muted);
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+/* 5. Actions: shared sizing, green primary, lavender secondary. */
+.homepage-gateway .gateway-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--home-space-sm);
+  margin-top: var(--home-space-lg);
+}
+
+.homepage-gateway .gateway-actions .button {
+  min-height: 48px;
+  padding: 0.95rem 1.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.8rem;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: normal;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.homepage-gateway .gateway-actions .button.home-primary {
+  background: var(--home-primary);
+  border-color: var(--home-primary);
+  color: var(--home-primary-ink);
+}
+
+.homepage-gateway .gateway-actions .button.home-secondary {
+  background: var(--home-lavender);
+  border-color: var(--home-lavender);
+  color: var(--home-lavender-ink);
+}
+
+.homepage-gateway .gateway-help {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--home-space-xs) var(--home-space-md);
+  margin-top: var(--home-space-md);
+}
+
+.homepage-gateway .gateway-help a,
+.homepage-gateway .gateway-help button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--home-space-xs);
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--home-lavender);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  transition: all 0.2s ease;
+}
+
+.homepage-gateway :is(button, a):focus-visible {
+  outline: 3px solid var(--home-primary);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 2px var(--home-background);
+}
+
+.homepage-gateway .gateway-actions .button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+@media (hover: hover) {
+  .homepage-gateway .gateway-actions .button:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.015);
+    box-shadow: 0 6px 18px #11132226;
+  }
+
+  .homepage-gateway .gateway-actions .home-primary:hover {
+    background: var(--home-primary-hover);
+    border-color: var(--home-primary-hover);
+  }
+
+  .homepage-gateway .gateway-actions .home-secondary:hover {
+    background: var(--home-lavender-hover);
+    border-color: var(--home-lavender-hover);
+  }
+
+  .homepage-gateway .gateway-help :is(a, button):hover {
+    color: var(--home-primary);
+  }
+}
+
+/* 6. Centered footer; retain support, copyright and installation links. */
+.site-footer.homepage-footer {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--home-space-sm);
+  margin-top: auto;
+  text-align: center;
+}
+
+.homepage-footer .footer-identity,
+.homepage-footer .footer-contact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  text-align: center;
+}
+
+.homepage-footer .footer-identity strong {
+  color: var(--ink);
+}
+
+/* 7. Responsive spacing and full-width touch targets. */
+@media (max-width: 600px) {
+  .homepage-gateway .gateway-copy,
+  .homepage-gateway .gateway-panel {
+    padding: var(--home-space-lg) var(--home-space-md);
+    border-radius: 1.25rem;
+  }
+
+  .homepage-gateway .gateway-actions {
+    flex-direction: column;
+  }
+
+  .homepage-gateway .gateway-actions .button {
+    width: 100%;
+  }
+}
+
+/* 8. Respect the visitor's motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  .homepage-gateway .gateway-actions .button,
+  .homepage-gateway .gateway-help :is(a, button) {
+    transition: none;
+  }
+
+  .homepage-gateway .gateway-actions .button:is(:hover, :active):not(:disabled) {
+    transform: none;
+  }
+}

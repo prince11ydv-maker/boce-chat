@@ -25,6 +25,7 @@ $sourceFiles += @('mobile/android/firebase-client.json','mobile/android/app/src/
 $sourceFiles += @('push-notifications.js','schema/push-sqlite.sql','schema/push-postgres.sql','schema/class-reminders-postgres.sql','test/push-notifications.test.js','public/push.js','test/web-push-ui.test.js')
 $sourceFiles += @('mobile/releases/Classnest-1.1.1.apk','mobile/releases/Classnest-1.1.1.apk.sha256')
 $sourceFiles += @('password-support.js','schema/password-support-sqlite.sql','schema/password-support-postgres.sql','test/password-support.test.js','test/password-support-ui.test.js')
+$sourceFiles += @('public/homepage.css')
 try {
     foreach ($relative in $sourceFiles) {
         $file = Join-Path $projectDir $relative

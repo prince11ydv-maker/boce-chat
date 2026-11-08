@@ -18,7 +18,7 @@ async function fixture(){
  return {request,async close(){if(!child.killed){const ended=new Promise(resolve=>child.once('exit',resolve));child.kill();await ended;}rmSync(dir,{recursive:true,force:true});}};
 }
 
-test('semester membership protects discussions and replies while notes remain public across semesters',async()=>{
+test('semester membership locks signed students while anonymous notes stay public and discussions stay private',async()=>{
  const f=await fixture();try{
   let r=await f.request('/api/setup',{method:'POST',body:{name:'Owner',email:'owner@example.com',password:'Owner semester test password'}});assert.equal(r.status,201);const owner=r.cookie;assert.equal(r.body.semester,3);
   for(const [index,value] of [undefined,999,'invalid',2.5].entries()){
@@ -35,7 +35,7 @@ test('semester membership protects discussions and replies while notes remain pu
   r=await f.request('/api/threads/'+thread4+'/replies',{method:'POST',cookie:fourth.cookie,body:{content:'Private fourth-semester reply'}});assert.equal(r.status,201);
   for(const [viewer,own,other,forbidden] of [[third,3,4,secrets.fourth],[fourth,4,3,secrets.third]]){
    r=await f.request('/api/state?semester='+own,{cookie:viewer.cookie});assert.equal(r.status,200);assert.equal(r.body.threads.length,1);assert.ok(!JSON.stringify(r.body).includes(forbidden));
-   r=await f.request('/api/state?semester='+other,{cookie:viewer.cookie});assert.equal(r.status,200);assert.deepEqual(r.body.threads,[]);assert.ok(!JSON.stringify(r.body).includes(forbidden));
+   r=await f.request('/api/state?semester='+other,{cookie:viewer.cookie});assert.equal(r.status,403);assert.match(r.body.error,/assigned semester/);assert.ok(!JSON.stringify(r.body).includes(forbidden));
   }
   for(const cookie of [undefined,pending.cookie]){
    r=await f.request('/api/state?semester=3',{cookie});assert.deepEqual(r.body.threads,[]);assert.ok(!JSON.stringify(r.body).includes(secrets.third));
@@ -47,14 +47,15 @@ test('semester membership protects discussions and replies while notes remain pu
   r=await f.request('/api/threads/'+thread4+'/replies',{method:'POST',cookie:third.cookie,body:{content:'Cross-semester attempt',semester:3}});assert.equal(r.status,404);
   r=await f.request('/api/threads/'+thread4,{method:'DELETE',cookie:third.cookie});assert.equal(r.status,404);
   r=await f.request('/api/email/preferences',{method:'PATCH',cookie:third.cookie,body:{semester:4,notes:false,notices:false,events:false}});assert.equal(r.status,200);
-  r=await f.request('/api/state?semester=4',{cookie:third.cookie});assert.equal(r.body.user.semester,3);assert.deepEqual(r.body.threads,[],'Following notes from another semester never changes discussion membership');
+  r=await f.request('/api/state?semester=4',{cookie:third.cookie});assert.equal(r.status,403);r=await f.request('/api/state',{cookie:third.cookie});assert.equal(r.body.user.semester,3);assert.equal(r.body.selectedSemester,3,'Email choices never change the current class membership');
   r=await f.request('/api/threads/'+thread3+'/replies',{cookie:third.cookie});assert.equal(r.status,200);assert.equal(r.body[0].content,'Private third-semester reply');
   r=await f.request('/api/state?semester=4',{cookie:owner});assert.equal(r.body.threads[0].id,thread4);
   r=await f.request('/api/threads/'+thread4+'/replies',{cookie:owner});assert.equal(r.status,200);assert.equal(r.body[0].content,'Private fourth-semester reply');
   r=await f.request('/api/subjects',{method:'POST',cookie:owner,body:{semester:4,name:'Public semester four subject'}});assert.equal(r.status,201);const subjectId=r.body.id;
   const note=new FormData();note.set('subjectId',subjectId);note.set('title','Public note from semester four');note.set('content','Shared study notes remain available to everyone.');
   r=await f.request('/api/notes',{method:'POST',cookie:owner,body:note});assert.equal(r.status,201);
-  for(const cookie of [undefined,third.cookie,pending.cookie]){r=await f.request('/api/state?semester=4',{cookie});assert.equal(r.status,200);assert.equal(r.body.notes[0].title,'Public note from semester four');assert.deepEqual(r.body.threads,[]);}
+  r=await f.request('/api/state?semester=4');assert.equal(r.status,200);assert.equal(r.body.notes[0].title,'Public note from semester four');assert.deepEqual(r.body.threads,[]);
+  for(const cookie of [third.cookie,pending.cookie]){r=await f.request('/api/state?semester=4',{cookie});assert.equal(r.status,403);assert.match(r.body.error,/assigned semester/);}
   r=await f.request('/api/users/'+third.id,{method:'PATCH',cookie:third.cookie,body:{semester:4}});assert.equal(r.status,403,'Students cannot move themselves into another private discussion');
   r=await f.request('/api/users/'+third.id,{method:'PATCH',cookie:owner,body:{semester:999,role:'blocked'}});assert.equal(r.status,400);
   r=await f.request('/api/state?semester=3',{cookie:third.cookie});assert.equal(r.body.user.semester,3);assert.equal(r.body.user.role,'member','Invalid assignment does not partially change approval');

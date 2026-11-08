@@ -16,6 +16,11 @@ $sourceFiles += @('schema/teaching-worker-postgres.sql')
 $sourceFiles += @('teacher-dashboard.js','schema/teacher-semesters-sqlite.sql','schema/teacher-semesters-postgres.sql','test/teacher-dashboard.test.js')
 $sourceFiles += @('notice-attachments.js','notice-file-validation.js','schema/notice-attachments-sqlite.sql','schema/notice-attachments-postgres.sql','test/notice-attachments.test.js','test/notice-notifications.test.js','test/notice-file-validation.test.js','test/notice-files.test.js')
 $sourceFiles += @('HOSTING.md')
+$sourceFiles += @('MOBILE.md','scripts/create-app-icons.py','test/pwa.test.js','test/pwa-ui.test.js','test/student-semester-lock.test.js','test/student-semester-ui.test.js')
+$sourceFiles += @('mobile/android/app/src/main/res/xml/data_extraction_rules.xml')
+$sourceFiles += @('mobile/releases/Classnest-1.0.0.apk','mobile/releases/Classnest-1.0.0.apk.sha256','mobile/releases/README.md')
+$sourceFiles += @('public/pwa.js','public/service-worker.js','public/manifest.webmanifest','public/offline.html','public/offline.css','public/app-icons/icon-192.png','public/app-icons/icon-512.png','public/app-icons/maskable-512.png','public/app-icons/apple-touch-icon.png')
+$sourceFiles += @('mobile/android/.gitignore','mobile/android/build.gradle','mobile/android/check-policy.ps1','mobile/android/gradle.properties','mobile/android/gradlew','mobile/android/gradlew.bat','mobile/android/README.md','mobile/android/settings.gradle','mobile/android/app/build.gradle','mobile/android/app/src/main/AndroidManifest.xml','mobile/android/app/src/main/java/app/classnest/pusoe/AttachmentDownloads.java','mobile/android/app/src/main/java/app/classnest/pusoe/MainActivity.java','mobile/android/app/src/main/java/app/classnest/pusoe/UrlPolicy.java','mobile/android/app/src/main/res/drawable/ic_launcher.xml','mobile/android/app/src/main/res/values/strings.xml','mobile/android/app/src/main/res/values/styles.xml','mobile/android/app/src/main/res/values-night/styles.xml','mobile/android/app/src/main/res/xml/network_security_config.xml','mobile/android/gradle/wrapper/gradle-wrapper.properties','mobile/android/gradle/wrapper/gradle-wrapper.jar','mobile/android/policy-test/UrlPolicyTest.java')
 try {
     foreach ($relative in $sourceFiles) {
         $file = Join-Path $projectDir $relative

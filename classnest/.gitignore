@@ -6,3 +6,8 @@ data/
 .vercel/
 *.zip
 *.log
+*.jks
+*.keystore
+*.p12
+*.dpapi
+keystore.properties

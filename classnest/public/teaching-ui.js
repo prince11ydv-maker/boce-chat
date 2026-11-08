@@ -4,6 +4,7 @@
   const validDate=value=>typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&Number.isFinite(Date.parse(value+'T00:00:00Z'))&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value;
   const initialDateQuery=new URLSearchParams(location.search).get('date');
   let h, daily=null, workspace=null, alerts={items:[],unread:0}, selectedDate=validDate(initialDateQuery)?initialDateQuery:'', teacherFilter=null,showAllTeacherNotes=false,timer=null, loading=null, loadError='',workspaceError='',alertsError='';
+  let contextGeneration=0;
   const weekdays=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const q=s=>document.querySelector(s);
   const today=()=>{const parts=Object.fromEntries(new Intl.DateTimeFormat('en',{timeZone:'Asia/Kathmandu',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(part=>[part.type,part.value]));return parts.year+'-'+parts.month+'-'+parts.day;};
@@ -24,16 +25,20 @@
     q('#notification-count').textContent=alerts.unread?String(Math.min(99,alerts.unread)):'';
     q('#notification-button').setAttribute('aria-label',`Notifications${alerts.unread?', '+alerts.unread+' unread':''}`);
   }
+  function scopeKey(){const user=h.state()?.user;return [user?.id||'',user?.role||'',user?.semester||'',h.semester()].join(':');}
+  function reset(){contextGeneration++;daily=null;workspace=null;alerts={items:[],unread:0};teacherFilter=null;showAllTeacherNotes=false;loadError='';workspaceError='';alertsError='';}
   async function load(){
     selectedDate ||= today();
     if(loading)await loading;
-    const semester=h.semester();
+    const semester=h.semester(),generation=contextGeneration,scope=scopeKey();
     loading=(async()=>{
-      loadError='';workspaceError='';alertsError='';
-      try { daily=await h.api('/teaching/state?semester='+semester+'&date='+encodeURIComponent(selectedDate)); }
-      catch(error){daily=null;loadError=error.message;}
-      if(staff())try{workspace=await h.api(role()==='teacher'?'/teacher/dashboard'+(teacherFilter?'?semester='+teacherFilter:''):'/teaching/workspace?semester='+semester+'&date='+encodeURIComponent(selectedDate));}catch(error){workspace=null;workspaceError=error.message;}else{workspace=null;teacherFilter=null;}
-      if(approved())try{alerts=await h.api('/notifications');}catch(error){alerts={items:[],unread:0};alertsError=error.message;}else alerts={items:[],unread:0};
+      let nextDaily=null,nextWorkspace=null,nextAlerts={items:[],unread:0},nextLoadError='',nextWorkspaceError='',nextAlertsError='';
+      try{nextDaily=await h.api('/teaching/state?semester='+semester+'&date='+encodeURIComponent(selectedDate));}catch(error){nextLoadError=error.message;}
+      if(staff())try{nextWorkspace=await h.api(role()==='teacher'?'/teacher/dashboard'+(teacherFilter?'?semester='+teacherFilter:''):'/teaching/workspace?semester='+semester+'&date='+encodeURIComponent(selectedDate));}catch(error){nextWorkspaceError=error.message;}
+      if(approved())try{nextAlerts=await h.api('/notifications');}catch(error){nextAlertsError=error.message;}
+      if(generation!==contextGeneration||scope!==scopeKey())return;
+      daily=nextDaily;workspace=nextWorkspace;alerts=nextAlerts;loadError=nextLoadError;workspaceError=nextWorkspaceError;alertsError=nextAlertsError;
+      if(!staff())teacherFilter=null;
       updateChrome();
       if(h.state()?.user&&!timer)timer=setInterval(()=>{if(document.visibilityState==='visible'&&!loading)h.refresh().catch(()=>{});},60000);
       if(!h.state()?.user&&timer){clearInterval(timer);timer=null;}
@@ -51,7 +56,7 @@
   }
   function myNotes(){
     const user=h.state().user, notes=h.state().notes.filter(note=>note.authorId===user?.id);
-    return `<section class="panel"><div class="section-heading"><div><span class="eyebrow">YOUR CONTRIBUTIONS</span><h2>My notes <small>${e(h.semesterLabel(h.semester()))}</small></h2></div>${approved()?h.actionButton('＋ Share a note','add-note','button-small button-dark'):''}</div><p class="visually-muted">Choose a semester at the top to find your notes. Approved students and teachers can publish, edit, and remove their own notes. Administrators can manage all notes.</p>${notes.length?notes.map(note=>`<div class="my-note-row"><div><strong>${e(note.title)}</strong><small>${e(note.subjectName)}${note.originalName?' · '+e(note.originalName):''}</small></div><div>${h.actionButton('View','read-note','button-small',note.id)}${approved()?h.actionButton('Edit','edit-note','button-small',note.id):''}</div></div>`).join(''):'<p class="teaching-empty">You have not shared a note in this semester yet.</p>'}</section>`;
+    return `<section class="panel"><div class="section-heading"><div><span class="eyebrow">YOUR CONTRIBUTIONS</span><h2>My notes <small>${e(h.semesterLabel(h.semester()))}</small></h2></div>${approved()?h.actionButton('＋ Share a note','add-note','button-small button-dark'):''}</div><p class="visually-muted">${staff()?'Choose a semester at the top to find your notes.':'Your shared notes stay in your assigned semester.'} Approved students and teachers can publish, edit, and remove their own notes. Administrators can manage all notes.</p>${notes.length?notes.map(note=>`<div class="my-note-row"><div><strong>${e(note.title)}</strong><small>${e(note.subjectName)}${note.originalName?' · '+e(note.originalName):''}</small></div><div>${h.actionButton('View','read-note','button-small',note.id)}${approved()?h.actionButton('Edit','edit-note','button-small',note.id):''}</div></div>`).join(''):'<p class="teaching-empty">You have not shared a note in this semester yet.</p>'}</section>`;
   }
   function upcomingCards(){
     const items=(workspace?.upcoming||[]).filter(session=>role()==='admin'||session.teacherId===h.state().user.id);
@@ -186,5 +191,5 @@
     q('#notification-button').addEventListener('click',()=>{location.hash='notifications';});
     window.addEventListener('pagehide',()=>{if(timer)clearInterval(timer);timer=null;});
   }
-  window.ClassnestTeachingUI=Object.freeze({init,load,dailyBoard,workspacePage,notificationsPage,shareTeacherNote});
+  window.ClassnestTeachingUI=Object.freeze({init,load,reset,dailyBoard,workspacePage,notificationsPage,shareTeacherNote});
 })();

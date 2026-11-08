@@ -1,0 +1,51 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.classnest.pusoe'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'app.classnest.pusoe'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    // Release credentials are supplied privately by the owner/build machine.
+    // No keystore or signing password belongs in source control.
+    def signingFile = System.getenv('CLASSNEST_KEYSTORE')
+    if (signingFile) {
+        signingConfigs {
+            release {
+                storeFile file(signingFile)
+                storePassword System.getenv('CLASSNEST_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('CLASSNEST_KEY_ALIAS')
+                keyPassword System.getenv('CLASSNEST_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+        }
+        release {
+            debuggable false
+            minifyEnabled false
+            if (signingFile) signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -14,6 +14,7 @@ $sourceFiles += @('public/routine-html-import.js')
 $sourceFiles += @('teaching.js','public/teaching-ui.js','schema/teaching-sqlite.sql','schema/teaching-postgres.sql','schema/teacher-accounts-postgres.sql')
 $sourceFiles += @('teacher-dashboard.js','schema/teacher-semesters-sqlite.sql','schema/teacher-semesters-postgres.sql')
 $sourceFiles += @('notice-attachments.js','notice-file-validation.js','schema/notice-attachments-sqlite.sql','schema/notice-attachments-postgres.sql')
+$sourceFiles += @('public/pwa.js','public/service-worker.js','public/manifest.webmanifest','public/offline.html','public/offline.css','public/app-icons/icon-192.png','public/app-icons/icon-512.png','public/app-icons/maskable-512.png','public/app-icons/apple-touch-icon.png')
 try {
     foreach ($relative in $sourceFiles) {
         $file = Join-Path $projectDir $relative

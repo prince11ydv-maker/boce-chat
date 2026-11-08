@@ -166,6 +166,40 @@ const semester = async v => {
   if (!Number.isSafeInteger(id) || id < 1 || !await get('SELECT id FROM semesters WHERE id=?', id)) fail(400, 'Choose a valid semester.');
   return id;
 };
+const semesterLocked = user => Boolean(user && !['admin','teacher'].includes(user.role));
+async function currentReader(req) {
+  if(req.sessionToken){
+    const current=await get('SELECT u.* FROM users u JOIN sessions s ON s.userId=u.id WHERE s.token=? AND s.expires>?',req.sessionToken,Date.now());
+    if(!current&&req.user)fail(401,'Please sign in again.');
+    req.user=current;
+  }
+  return req.user;
+}
+function checkSemesterAccess(req,selected) {
+  if(semesterLocked(req.user)&&req.user.semester!==selected)fail(403,'Your account is limited to your assigned semester.');
+}
+async function browseSemester(req,value) {
+  await currentReader(req);
+  const selected=await semester(value===undefined?(semesterLocked(req.user)?req.user.semester:(await get('SELECT semester FROM settings WHERE id=1')).semester):value);
+  checkSemesterAccess(req,selected);
+  return selected;
+}
+async function noteForReader(req,id) {
+  return db.transaction(async()=>{
+    await currentReader(req);
+    const note=await get('SELECT n.*,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.id=?',id);
+    if(note)checkSemesterAccess(req,note.semester);
+    return note;
+  });
+}
+async function noticeFileForReader(req,id) {
+  return db.transaction(async()=>{
+    await currentReader(req);
+    const notice=await get('SELECT semester FROM notices WHERE id=?',id);
+    if(notice)checkSemesterAccess(req,notice.semester);
+    return notice?noticeFiles.get(id):null;
+  });
+}
 app.use('/api', async (req, res, next) => {
   res.set('Cache-Control', 'no-store');
   const raw = req.headers.cookie?.split(';').map(s => s.trim()).find(s => s.startsWith('classnest_session='))?.slice(18);
@@ -339,10 +373,13 @@ async function routinesFor(selected){
 }
 async function noticesFor(selected){const files=new Map((await noticeFiles.list(selected)).map(file=>[file.notice_id,publicNoticeAttachment(file)]));return (await all('SELECT n.*,u.name author FROM notices n LEFT JOIN users u ON u.id=n.authorId WHERE n.semester=? ORDER BY n.pinned DESC,n.created DESC',selected)).map(notice=>({...notice,attachment:files.get(notice.id)||null}));}
 app.get('/api/state', async (req, res) => {
-  const selected = await semester(req.query.semester || (await get('SELECT semester FROM settings')).semester);
-  await sendJson(res,{
+  const payload=await db.transaction(async()=>{
+  const selected = await browseSemester(req,req.query.semester);
+  return {
     settings: await get('SELECT * FROM settings'),
-    semesters: await all('SELECT * FROM semesters ORDER BY id'),
+    semesters: semesterLocked(req.user)?await all('SELECT * FROM semesters WHERE id=?',selected):await all('SELECT * FROM semesters ORDER BY id'),
+    selectedSemester:selected,
+    semesterLocked:semesterLocked(req.user),
     user: publicUser(req.user),
     directUploads:cloudStorage,
     emailAvailable:emailOutbox.enabled,
@@ -355,7 +392,9 @@ app.get('/api/state', async (req, res) => {
     routines: await routinesFor(selected),
     teaching: await teaching.state(null,selected),
     events: await all('SELECT * FROM events WHERE semester=? ORDER BY date', selected)
+  };
   });
+  await sendJson(res,payload);
 });
 function routineRequest(req,reset=false){
   if(!routineKinds.has(req.params.kind))fail(400,'Choose a class or exam routine.');
@@ -375,8 +414,8 @@ async function saveRoutine(req,res,reset=false){
 }
 app.put('/api/routines/:kind',admin,atomic((req,res)=>saveRoutine(req,res)));
 app.delete('/api/routines/:kind',admin,atomic((req,res)=>saveRoutine(req,res,true)));
-app.get('/api/teaching/state',async(req,res)=>res.json(await teaching.state(null,await semester(req.query.semester||(await get('SELECT semester FROM settings WHERE id=1')).semester),req.query.date)));
-app.get('/api/teaching/workspace',member,atomic(async(req,res)=>res.json(await teaching.workspace(req.user,await semester(req.query.semester||(await get('SELECT semester FROM settings WHERE id=1')).semester),req.query.date))));
+app.get('/api/teaching/state',async(req,res)=>res.json(await db.transaction(async()=>teaching.state(null,await browseSemester(req,req.query.semester),req.query.date))));
+app.get('/api/teaching/workspace',member,atomic(async(req,res)=>res.json(await teaching.workspace(req.user,await browseSemester(req,req.query.semester),req.query.date))));
 app.post('/api/teaching/slots',admin,atomic(async(req,res)=>{res.status(201).json(await teaching.saveSlot(req.user,req.body));req.afterCommit.push(scheduleEmailDelivery);}));
 app.put('/api/teaching/slots/:id',admin,atomic(async(req,res)=>{res.json(await teaching.saveSlot(req.user,req.body,req.params.id));req.afterCommit.push(scheduleEmailDelivery);}));
 app.delete('/api/teaching/slots/:id',admin,atomic(async(req,res)=>res.json(await teaching.deleteSlot(req.user,req.params.id,req.body.revision))));
@@ -761,7 +800,9 @@ app.post('/api/notes', member,(req,res,next)=>{
       uploadBytesOnDisk += req.file.size;
     }
     const subject = text(req.body.subjectId, 'Subject', 100);
-    if (!await get('SELECT id FROM subjects WHERE id=?', subject)) fail(404, 'Subject not found.');
+    const selectedSubject=await get('SELECT id,semester FROM subjects WHERE id=?', subject);
+    if (!selectedSubject) fail(404, 'Subject not found.');
+    checkSemesterAccess(req,selectedSubject.semester);
     const title = text(req.body.title, 'Note title', 150), content = optional(req.body.content, 150000);
     if(cloudStorage)return await saveCloudNote(req,res,{subject,title,content});
     if (!req.file && !content) fail(400, 'Write a note or attach a file.');
@@ -782,14 +823,19 @@ app.post('/api/notes', member,(req,res,next)=>{
     next(e);
   }
 }));
-app.get('/api/my-notes',member,atomic(async(req,res)=>res.json(await all('SELECT n.id,n.subjectId,n.title,n.content,n.originalName,n.mime,n.size,n.authorId,n.created,s.name subjectName,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.authorId=? ORDER BY n.created DESC',req.user.id))));
+app.get('/api/my-notes',member,atomic(async(req,res)=>{
+  const locked=semesterLocked(req.user),params=locked?[req.user.id,req.user.semester]:[req.user.id];
+  res.json(await all('SELECT n.id,n.subjectId,n.title,n.content,n.originalName,n.mime,n.size,n.authorId,n.created,s.name subjectName,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.authorId=?'+(locked?' AND s.semester=?':'')+' ORDER BY n.created DESC',...params));
+}));
 app.put('/api/notes/:id',member,atomic(async(req,res)=>{
   if(Object.keys(req.body).some(key=>!['title','content','subjectId'].includes(key)))fail(400,'Send the note title, content and subject.');
-  const note=await get('SELECT * FROM notes WHERE id=?',req.params.id);
+  const note=await get('SELECT n.*,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.id=?',req.params.id);
   if(!note)fail(404,'Note not found.');
+  checkSemesterAccess(req,note.semester);
   if(req.user.role!=='admin'&&note.authorId!==req.user.id)fail(403,'You can only edit your own notes.');
   const subject=text(req.body.subjectId,'Subject',100),title=text(req.body.title,'Note title',150),content=optional(req.body.content,150000);
-  if(!await get('SELECT id FROM subjects WHERE id=?',subject))fail(404,'Subject not found.');
+  const selectedSubject=await get('SELECT id,semester FROM subjects WHERE id=?',subject);if(!selectedSubject)fail(404,'Subject not found.');
+  checkSemesterAccess(req,selectedSubject.semester);
   if(!note.filename&&!content)fail(400,'Write a note or keep an existing attachment.');
   // Reuse the workspace text bound without counting this existing note twice.
   const increase=Math.max(0,Buffer.byteLength(content,db.provider==='azure-sql'?'utf16le':'utf8')-Buffer.byteLength(note.content,db.provider==='azure-sql'?'utf16le':'utf8'));
@@ -798,7 +844,7 @@ app.put('/api/notes/:id',member,atomic(async(req,res)=>{
   res.json({ok:true,id:note.id});
 }));
 app.get('/api/notes/:id/preview', async (req,res) => {
-  const note=await get('SELECT * FROM notes WHERE id=?',req.params.id);
+  const note=await noteForReader(req,req.params.id);
   if(!note?.filename)fail(404,'Attachment not found.');
   const previewTypes={'application/pdf':'application/pdf','image/png':'image/png','image/jpeg':'image/jpeg','image/webp':'image/webp','text/plain':'text/plain; charset=utf-8','text/markdown':'text/plain; charset=utf-8'};
   const contentType=previewTypes[note.mime];
@@ -821,7 +867,7 @@ app.get('/api/notes/:id/preview', async (req,res) => {
   await pipeline(Readable.from(chunks()),res);
 });
 app.get('/api/notes/:id/download', async (req, res, next) => {
-  const note = await get('SELECT * FROM notes WHERE id=?', req.params.id);
+  const note = await noteForReader(req,req.params.id);
   if (!note?.filename) fail(404, 'Attachment not found.');
   if(storage)return res.redirect(302,await storage.signedDownload(note.filename,note.originalName));
   res.set({
@@ -834,8 +880,9 @@ app.get('/api/notes/:id/download', async (req, res, next) => {
   });
 });
 app.delete('/api/notes/:id', member, atomic(async (req, res) => {
-  const n = await get('SELECT * FROM notes WHERE id=?', req.params.id);
+  const n = await get('SELECT n.*,s.semester FROM notes n JOIN subjects s ON s.id=n.subjectId WHERE n.id=?', req.params.id);
   if (!n) fail(404, 'Note not found.');
+  checkSemesterAccess(req,n.semester);
   if (req.user.role !== 'admin' && n.authorId !== req.user.id) fail(403, 'You can only delete your own notes.');
   await run('DELETE FROM notes WHERE id=?', n.id);
   req.afterCommit.push(()=>removeFile(n.filename));
@@ -880,7 +927,7 @@ app.post('/api/notices',admin,(req,res,next)=>{
   });
 }));
 app.get('/api/notices/:id/preview',async(req,res)=>{
-  const file=await noticeFiles.get(req.params.id);if(!file)fail(404,'Notice attachment not found.');
+  const file=await noticeFileForReader(req,req.params.id);if(!file)fail(404,'Notice attachment not found.');
   if(!['application/pdf','image/png','image/jpeg','image/webp','image/gif','image/bmp','image/avif'].includes(file.mime))fail(415,'Download this photo to open it in a compatible photo app.');
   let bytes;if(storage)bytes=await storage.read(file.filename);else{const target=attachmentPath(file.filename);let details;try{details=statSync(target);}catch{fail(404,'Attachment not found.');}if(!details.isFile()||details.size!==file.size||details.size>maxUpload)fail(409,'The attachment changed.');bytes=await readFile(target);}
   if(bytes.length!==file.size)fail(409,'The attachment changed.');
@@ -890,7 +937,7 @@ app.get('/api/notices/:id/preview',async(req,res)=>{
   async function* chunks(){for(let offset=0;offset<bytes.length;offset+=65536)yield bytes.subarray(offset,offset+65536);}await pipeline(Readable.from(chunks()),res);
 });
 app.get('/api/notices/:id/download',async(req,res,next)=>{
-  const file=await noticeFiles.get(req.params.id);if(!file)fail(404,'Notice attachment not found.');
+  const file=await noticeFileForReader(req,req.params.id);if(!file)fail(404,'Notice attachment not found.');
   if(storage)return res.redirect(302,await storage.signedDownload(file.filename,file.original_name));
   res.set({'X-Content-Type-Options':'nosniff','Content-Type':'application/octet-stream','Content-Security-Policy':"sandbox; default-src 'none'"});res.download(attachmentPath(file.filename),file.original_name,error=>{if(error&&!res.headersSent)next(error);});
 });
@@ -987,6 +1034,11 @@ app.get('/api/health', (req, res) => res.json({
 app.use('/api', (req, res) => res.status(404).json({
   error: 'This API route does not exist.'
 }));
+app.use((req,res,next)=>{
+  if(req.path==='/service-worker.js')res.set({'Cache-Control':'no-cache','Service-Worker-Allowed':'/','Content-Type':'application/javascript; charset=utf-8'});
+  if(req.path==='/manifest.webmanifest')res.set({'Cache-Control':'no-cache','Content-Type':'application/manifest+json; charset=utf-8'});
+  next();
+});
 app.use(express.static(path.join(root, 'public'), {
   index: 'index.html'
 }));

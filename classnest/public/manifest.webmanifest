@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "Classnest",
+  "short_name": "Classnest",
+  "description": "Your class, connected. Notes, notices, timetables, and your semester community.",
+  "lang": "en",
+  "start_url": "/?source=app#home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f6f7fb",
+  "theme_color": "#45459a",
+  "categories": ["education", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    {"src": "/app-icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/app-icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/app-icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Subject library", "short_name": "Subjects", "url": "/#subjects", "icons": [{"src": "/app-icons/icon-192.png", "sizes": "192x192", "type": "image/png"}]},
+    {"name": "Notice board", "short_name": "Notices", "url": "/#notices", "icons": [{"src": "/app-icons/icon-192.png", "sizes": "192x192", "type": "image/png"}]},
+    {"name": "Daily timetable", "short_name": "Timetable", "url": "/#home", "icons": [{"src": "/app-icons/icon-192.png", "sizes": "192x192", "type": "image/png"}]}
+  ]
+}

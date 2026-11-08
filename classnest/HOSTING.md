@@ -14,7 +14,9 @@ The application source lives in this repository's `classnest/` folder. Run its c
 | Account and notification email | Brevo SMTP |
 | Retry and class-reminder worker | Existing Supabase cron job `classnest-email-delivery`, every minute |
 
-The latest verified production deployment is `dpl_8eskU4SzGMBLqsq9AWqFAfJ2Hdc2`, built from 45 deployment source files. It passed 88 automated tests and the production checks recorded in [DEPLOYMENT.md](DEPLOYMENT.md). The earlier address, `classnest-pu.vercel.app`, redirects to the primary website.
+The current mobile/student semester-lock production deployment is `dpl_9ohMbPv9WxytCDTHMTv2zNNtL1Pe`, READY with source SHA-256 `f79380302ac75c22888aba88f92692aaa4055a3cf6a25a83b6da889466fa2c4e` across 54 web deployment files. Its 108 website tests, Android build/signature checks, production source/content checks, and successful automatic worker run are recorded in [DEPLOYMENT.md](DEPLOYMENT.md). The earlier address, `classnest-pu.vercel.app`, redirects to the primary website. Earlier notice/dashboard identifiers and test totals remain historical evidence in that deployment guide.
+
+Mobile installation is documented separately in [MOBILE.md](MOBILE.md). The Android/iPhone home-screen app and signed Android APK use the same site/backend; the new web source inventory contains 54 files. No database migration, re-import, extra cloud resource, paid plan, or store account is needed. Native Android signing material stays privately under the owner's user profile and is excluded from source/Git archives. The release APK is a separate public artifact, not a server credential.
 
 Adding this source to GitHub does not connect the existing Vercel project to Git or turn on automatic deployments. It requires no new service, paid plan, credential, or deployment. The current website continues to use its existing provider settings.
 
